@@ -1,7 +1,9 @@
-import { getAdapterForCurrentPage } from "../adapters/registry.js";
-
 (async function boot() {
   try {
+    const { getAdapterForCurrentPage } = await import(
+      chrome.runtime.getURL("src/adapters/registry.js")
+    );
+
     const adapter = getAdapterForCurrentPage(window.location.href);
 
     if (!adapter) {
@@ -16,10 +18,12 @@ import { getAdapterForCurrentPage } from "../adapters/registry.js";
     }
 
     chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+      if (!message || message.target !== "page-adapter") {
+        return;
+      }
+
       (async () => {
         try {
-          if (!message || message.target !== "page-adapter") return;
-
           if (typeof adapter.handleMessage !== "function") {
             sendResponse({
               ok: false,
