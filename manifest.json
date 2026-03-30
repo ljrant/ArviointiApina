@@ -1,1 +1,38 @@
-
+{
+  "manifest_version": 3,
+  "name": "Arviointiapina",
+  "version": "0.1.0",
+  "description": "Modular teacher side panel for collecting, merging, and using student evaluation data locally.",
+  "minimum_chrome_version": "116",
+  "permissions": [
+    "storage",
+    "sidePanel",
+    "activeTab",
+    "scripting",
+    "downloads"
+  ],
+  "host_permissions": [
+    "https://oma.abitti.fi/*"
+  ],
+  "background": {
+    "service_worker": "src/background/service-worker.js",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "Open Arviointiapina"
+  },
+  "side_panel": {
+    "default_path": "src/sidepanel/sidepanel.html"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://oma.abitti.fi/*"
+      ],
+      "js": [
+        "src/content/boot.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
+}
