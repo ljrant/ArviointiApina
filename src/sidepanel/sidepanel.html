@@ -1,1 +1,76 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0"
+    />
+    <title>Arviointiapina</title>
+    <link rel="stylesheet" href="./sidepanel.css" />
+  </head>
 
+  <body>
+    <div class="app">
+      <!-- HEADER -->
+      <header class="app-header">
+        <h1>Arviointiapina</h1>
+        <div id="site-badge">Detecting…</div>
+      </header>
+
+      <!-- CURRENT PAGE -->
+      <section class="card">
+        <h2>Current page</h2>
+        <div id="current-page">Loading…</div>
+      </section>
+
+      <!-- TOOLS -->
+      <section class="card">
+        <h2>Available tools</h2>
+        <div id="tools-list">Loading…</div>
+      </section>
+
+      <!-- DATABASE -->
+      <section class="card">
+        <h2>Local database</h2>
+
+        <button id="btn-init-db">
+          Initialize local database
+        </button>
+
+        <button id="btn-export-db">
+          Export encrypted backup
+        </button>
+
+        <button id="btn-import-db">
+          Import encrypted backup
+        </button>
+
+        <input
+          id="import-file"
+          type="file"
+          accept=".txt"
+          hidden
+        />
+
+        <div id="db-status"></div>
+      </section>
+
+      <!-- FUTURE: ACTION PANEL -->
+      <section class="card">
+        <h2>Actions</h2>
+        <div id="actions">
+          (Will show site-specific buttons later)
+        </div>
+      </section>
+
+      <!-- LOG -->
+      <section class="card">
+        <h2>Log</h2>
+        <pre id="log"></pre>
+      </section>
+    </div>
+
+    <script type="module" src="./sidepanel.js"></script>
+  </body>
+</html>
