@@ -1,10 +1,16 @@
+import { importGradesAndNotesFromCsvText } from "./writer.js";
+
+function getPathname(url) {
+  try {
+    return new URL(url).pathname;
+  } catch {
+    return "";
+  }
+}
+
 export const abittiAdapter = {
   id: "abitti",
   label: "Abitti",
-
-  /* ---------------------------
-     SITE MATCHING
-  --------------------------- */
 
   matches(url) {
     try {
@@ -15,14 +21,9 @@ export const abittiAdapter = {
     }
   },
 
-  /* ---------------------------
-     TOOL DETECTION
-  --------------------------- */
-
   getAvailableTools(url) {
-    const path = new URL(url).pathname;
+    const path = getPathname(url);
 
-    // Grading page (CSV import target)
     if (/^\/school\/grading\/.+/.test(path)) {
       return [
         "Import grades CSV to current question",
@@ -30,7 +31,6 @@ export const abittiAdapter = {
       ];
     }
 
-    // Review page (auto grading)
     if (/^\/school\/review\/.+/.test(path)) {
       return [
         "Auto grading",
@@ -41,17 +41,9 @@ export const abittiAdapter = {
     return [];
   },
 
-  /* ---------------------------
-     INIT (runs on page load)
-  --------------------------- */
-
   async init() {
     console.log("[Arviointiapina] Abitti adapter initialized");
   },
-
-  /* ---------------------------
-     MESSAGE HANDLER (future tools)
-  --------------------------- */
 
   async handleMessage(message) {
     switch (message?.action) {
@@ -60,6 +52,17 @@ export const abittiAdapter = {
           ok: true,
           adapter: "abitti"
         };
+
+      case "ABITTI_IMPORT_CSV_TEXT": {
+        if (!message.csvText || typeof message.csvText !== "string") {
+          return {
+            ok: false,
+            error: "Missing csvText"
+          };
+        }
+
+        return await importGradesAndNotesFromCsvText(message.csvText);
+      }
 
       default:
         return {
