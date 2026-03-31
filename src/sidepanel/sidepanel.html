@@ -1,76 +1,51 @@
 <!doctype html>
 <html lang="en">
   <head>
-    <meta charset="UTF-8" />
-    <meta
-      name="viewport"
-      content="width=device-width, initial-scale=1.0"
-    />
+    <meta charset="utf-8" />
     <title>Arviointiapina</title>
-    <link rel="stylesheet" href="./sidepanel.css" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <link rel="stylesheet" href="sidepanel.css" />
   </head>
 
   <body>
     <div class="app">
-      <!-- HEADER -->
-      <header class="app-header">
+      <div class="app-header">
         <h1>Arviointiapina</h1>
-        <div id="site-badge">Detecting…</div>
-      </header>
+        <div id="site-badge">—</div>
+      </div>
 
-      <!-- CURRENT PAGE -->
-      <section class="card">
+      <div class="card">
         <h2>Current page</h2>
-        <div id="current-page">Loading…</div>
-      </section>
+        <div id="current-page">Loading...</div>
+      </div>
 
-      <!-- TOOLS -->
-      <section class="card">
+      <div class="card">
         <h2>Available tools</h2>
-        <div id="tools-list">Loading…</div>
-      </section>
+        <div id="tools-list" class="tool-list">Loading...</div>
+      </div>
 
-      <!-- DATABASE -->
-      <section class="card">
-        <h2>Local database</h2>
-
-        <button id="btn-init-db">
-          Initialize local database
-        </button>
-
-        <button id="btn-export-db">
-          Export encrypted backup
-        </button>
-
-        <button id="btn-import-db">
-          Import encrypted backup
-        </button>
-
-        <input
-          id="import-file"
-          type="file"
-          accept=".txt"
-          hidden
-        />
-
-        <div id="db-status"></div>
-      </section>
-
-      <!-- FUTURE: ACTION PANEL -->
-      <section class="card">
+      <div class="card">
         <h2>Actions</h2>
-        <div id="actions">
-          (Will show site-specific buttons later)
-        </div>
-      </section>
 
-      <!-- LOG -->
-      <section class="card">
+        <!-- CSV import -->
+        <input id="csv-file" type="file" accept=".csv,text/csv" />
+
+        <button id="btn-upload-csv">
+          Import CSV (grades + notes)
+        </button>
+
+        <button id="btn-refresh">
+          Refresh page info
+        </button>
+      </div>
+
+      <div class="card">
         <h2>Log</h2>
         <pre id="log"></pre>
-      </section>
+      </div>
     </div>
 
-    <script type="module" src="./sidepanel.js"></script>
+    <script src="sidepanel.js"></script>
   </body>
 </html>
