@@ -1,9 +1,7 @@
+import { getAdapterForCurrentPage } from "../adapters/registry.js";
+
 (async function boot() {
   try {
-    const { getAdapterForCurrentPage } = await import(
-      chrome.runtime.getURL("src/adapters/registry.js")
-    );
-
     const adapter = getAdapterForCurrentPage(window.location.href);
 
     if (!adapter) {
@@ -33,10 +31,7 @@
           }
 
           const result = await adapter.handleMessage(message);
-          sendResponse({
-            ok: true,
-            result
-          });
+          sendResponse({ ok: true, result });
         } catch (error) {
           console.error("[Arviointiapina] Adapter message error", error);
           sendResponse({
