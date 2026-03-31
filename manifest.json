@@ -34,5 +34,18 @@
       ],
       "run_at": "document_idle"
     }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "src/adapters/registry.js",
+        "src/adapters/abitti/adapter.js",
+        "src/adapters/abitti/writer.js",
+        "src/adapters/abitti/exporter.js"
+      ],
+      "matches": [
+        "https://oma.abitti.fi/*"
+      ]
+    }
   ]
 }
