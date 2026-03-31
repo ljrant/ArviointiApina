@@ -1,4 +1,5 @@
 import { importGradesAndNotesFromCsvText } from "./writer.js";
+import { installQuestionExportButtons } from "./exporter.js";
 
 function getPathname(url) {
   try {
@@ -26,6 +27,7 @@ export const abittiAdapter = {
 
     if (/^\/school\/grading\/.+/.test(path)) {
       return [
+        "Export individual answers to CSV",
         "Import grades CSV to current question",
         "Import teacher notes to current question"
       ];
@@ -43,6 +45,12 @@ export const abittiAdapter = {
 
   async init() {
     console.log("[Arviointiapina] Abitti adapter initialized");
+
+    const path = getPathname(window.location.href);
+
+    if (/^\/school\/grading\/.+/.test(path)) {
+      installQuestionExportButtons();
+    }
   },
 
   async handleMessage(message) {
