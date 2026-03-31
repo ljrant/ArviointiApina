@@ -16,6 +16,10 @@ function log(message) {
   elLog.textContent = line + "\n\n" + elLog.textContent;
 }
 
+async function getRegistry() {
+  return await import(chrome.runtime.getURL("src/adapters/registry.js"));
+}
+
 async function getActiveTab() {
   const res = await chrome.runtime.sendMessage({
     type: "GET_ACTIVE_TAB_INFO"
@@ -28,34 +32,13 @@ async function getActiveTab() {
   return res.tab;
 }
 
-async function detectSite(tab) {
-  const [{ result }] = await chrome.scripting.executeScript({
-    target: { tabId: tab.id },
-    func: async () => {
-      const mod = await import(
-        chrome.runtime.getURL("src/adapters/registry.js")
-      );
-
-      return mod.detectSiteFromUrl(window.location.href);
-    }
-  });
-
-  return result;
-}
-
-async function getTools(tab) {
-  const [{ result }] = await chrome.scripting.executeScript({
-    target: { tabId: tab.id },
-    func: async () => {
-      const mod = await import(
-        chrome.runtime.getURL("src/adapters/registry.js")
-      );
-
-      return mod.getAvailableSiteTools(window.location.href);
-    }
-  });
-
-  return result || [];
+function isAbittiUrl(url) {
+  try {
+    const u = new URL(url);
+    return u.hostname === "oma.abitti.fi";
+  } catch {
+    return false;
+  }
 }
 
 async function sendToPage(tab, message) {
@@ -89,10 +72,12 @@ async function refresh() {
     elToolsList.textContent = "Loading...";
 
     const tab = await getActiveTab();
+    const url = tab.url || "";
 
-    elCurrentPage.textContent = `${tab.title}\n${tab.url}`;
+    elCurrentPage.textContent = `${tab.title || "(no title)"}\n${url || "(no url)"}`;
 
-    const site = await detectSite(tab);
+    const registry = await getRegistry();
+    const site = registry.detectSiteFromUrl(url);
 
     if (site) {
       elSiteBadge.textContent = site.label;
@@ -100,7 +85,7 @@ async function refresh() {
       elSiteBadge.textContent = "Unsupported";
     }
 
-    const tools = await getTools(tab);
+    const tools = registry.getAvailableSiteTools(url);
     renderTools(tools);
 
     log("Refreshed");
@@ -121,9 +106,14 @@ inputCsv.addEventListener("change", async () => {
     const file = inputCsv.files?.[0];
     if (!file) return;
 
-    const text = await file.text();
-
     const tab = await getActiveTab();
+    const url = tab.url || "";
+
+    if (!isAbittiUrl(url)) {
+      throw new Error("CSV import works only on oma.abitti.fi grading pages.");
+    }
+
+    const text = await file.text();
 
     log("Sending CSV to page...");
 
