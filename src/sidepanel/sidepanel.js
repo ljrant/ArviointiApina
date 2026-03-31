@@ -1,154 +1,144 @@
-:root {
-  color-scheme: light;
-  --bg: #f5f7fb;
-  --card: #ffffff;
-  --border: #d8deea;
-  --text: #1f2937;
-  --muted: #667085;
-  --accent: #2563eb;
-  --accent-soft: #dbeafe;
-  --success: #127a3f;
-  --warning: #9a6700;
-  --danger: #b42318;
-  --shadow: 0 8px 24px rgba(16, 24, 40, 0.08);
-  --radius: 12px;
+const elSiteBadge = document.getElementById("site-badge");
+const elCurrentPage = document.getElementById("current-page");
+const elToolsList = document.getElementById("tools-list");
+const elLog = document.getElementById("log");
+
+const btnUploadCsv = document.getElementById("btn-upload-csv");
+const btnRefresh = document.getElementById("btn-refresh");
+const inputCsv = document.getElementById("csv-file");
+
+function log(message) {
+  const line =
+    typeof message === "string"
+      ? message
+      : JSON.stringify(message, null, 2);
+
+  elLog.textContent = line + "\n\n" + elLog.textContent;
 }
 
-* {
-  box-sizing: border-box;
+async function getActiveTab() {
+  const res = await chrome.runtime.sendMessage({
+    type: "GET_ACTIVE_TAB_INFO"
+  });
+
+  if (!res?.ok || !res.tab) {
+    throw new Error("Failed to get active tab");
+  }
+
+  return res.tab;
 }
 
-html,
-body {
-  margin: 0;
-  padding: 0;
-  font-family: Arial, Helvetica, sans-serif;
-  background: var(--bg);
-  color: var(--text);
+async function detectSite(tab) {
+  const [{ result }] = await chrome.scripting.executeScript({
+    target: { tabId: tab.id },
+    func: async () => {
+      const mod = await import(
+        chrome.runtime.getURL("src/adapters/registry.js")
+      );
+
+      return mod.detectSiteFromUrl(window.location.href);
+    }
+  });
+
+  return result;
 }
 
-body {
-  min-width: 320px;
+async function getTools(tab) {
+  const [{ result }] = await chrome.scripting.executeScript({
+    target: { tabId: tab.id },
+    func: async () => {
+      const mod = await import(
+        chrome.runtime.getURL("src/adapters/registry.js")
+      );
+
+      return mod.getAvailableSiteTools(window.location.href);
+    }
+  });
+
+  return result || [];
 }
 
-.app {
-  padding: 12px;
+async function sendToPage(tab, message) {
+  const res = await chrome.tabs.sendMessage(tab.id, {
+    ...message,
+    target: "page-adapter"
+  });
+
+  return res;
 }
 
-.app-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 12px;
+function renderTools(tools) {
+  if (!tools.length) {
+    elToolsList.textContent = "No tools available";
+    return;
+  }
+
+  elToolsList.innerHTML = "";
+
+  for (const tool of tools) {
+    const div = document.createElement("div");
+    div.className = "tool-chip";
+    div.textContent = tool;
+    elToolsList.appendChild(div);
+  }
 }
 
-.app-header h1 {
-  margin: 0;
-  font-size: 18px;
-  line-height: 1.2;
+async function refresh() {
+  try {
+    elCurrentPage.textContent = "Loading...";
+    elToolsList.textContent = "Loading...";
+
+    const tab = await getActiveTab();
+
+    elCurrentPage.textContent = `${tab.title}\n${tab.url}`;
+
+    const site = await detectSite(tab);
+
+    if (site) {
+      elSiteBadge.textContent = site.label;
+    } else {
+      elSiteBadge.textContent = "Unsupported";
+    }
+
+    const tools = await getTools(tab);
+    renderTools(tools);
+
+    log("Refreshed");
+  } catch (error) {
+    console.error(error);
+    log(error instanceof Error ? error.message : String(error));
+  }
 }
 
-.card {
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow);
-  padding: 12px;
-  margin-bottom: 12px;
-}
+btnRefresh.addEventListener("click", refresh);
 
-.card h2 {
-  margin: 0 0 10px 0;
-  font-size: 15px;
-  line-height: 1.3;
-}
+btnUploadCsv.addEventListener("click", () => {
+  inputCsv.click();
+});
 
-#site-badge {
-  padding: 5px 10px;
-  border-radius: 999px;
-  background: var(--accent-soft);
-  color: var(--accent);
-  font-size: 12px;
-  font-weight: 700;
-  white-space: nowrap;
-}
+inputCsv.addEventListener("change", async () => {
+  try {
+    const file = inputCsv.files?.[0];
+    if (!file) return;
 
-button {
-  width: 100%;
-  display: block;
-  margin: 0 0 8px 0;
-  padding: 10px 12px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: #fff;
-  color: var(--text);
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-  transition:
-    background 0.15s ease,
-    border-color 0.15s ease,
-    transform 0.02s ease;
-}
+    const text = await file.text();
 
-button:hover {
-  border-color: var(--accent);
-  background: #f8fbff;
-}
+    const tab = await getActiveTab();
 
-button:active {
-  transform: translateY(1px);
-}
+    log("Sending CSV to page...");
 
-button:disabled {
-  opacity: 0.6;
-  cursor: default;
-}
+    const res = await sendToPage(tab, {
+      action: "ABITTI_IMPORT_CSV_TEXT",
+      csvText: text
+    });
 
-input[type="file"] {
-  display: none;
-}
+    log(res);
+  } catch (error) {
+    console.error(error);
+    log(error instanceof Error ? error.message : String(error));
+  } finally {
+    inputCsv.value = "";
+  }
+});
 
-#current-page,
-#tools-list,
-#db-status,
-#actions {
-  font-size: 13px;
-  color: var(--muted);
-  line-height: 1.45;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-#db-status {
-  margin-top: 6px;
-  min-height: 18px;
-}
-
-#log {
-  margin: 0;
-  font-size: 12px;
-  line-height: 1.45;
-  color: var(--muted);
-  white-space: pre-wrap;
-  word-break: break-word;
-  max-height: 220px;
-  overflow: auto;
-}
-
-.tool-list {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.tool-chip {
-  display: inline-block;
-  padding: 6px 8px;
-  border-radius: 8px;
-  background: #f3f4f6;
-  border: 1px solid var(--border);
-  color: var(--text);
-  font-size: 12px;
-}
+refresh();
