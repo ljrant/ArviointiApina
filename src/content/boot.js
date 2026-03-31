@@ -31,7 +31,10 @@ import { getAdapterForCurrentPage } from "../adapters/registry.js";
           }
 
           const result = await adapter.handleMessage(message);
-          sendResponse({ ok: true, result });
+          sendResponse({
+            ok: true,
+            result
+          });
         } catch (error) {
           console.error("[Arviointiapina] Adapter message error", error);
           sendResponse({
