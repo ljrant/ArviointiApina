@@ -1,7 +1,9 @@
-import { getAdapterForCurrentPage } from "../adapters/registry.js";
-
 (async function boot() {
   try {
+    const { getAdapterForCurrentPage } = await import(
+      chrome.runtime.getURL("src/adapters/registry.js")
+    );
+
     const adapter = getAdapterForCurrentPage(window.location.href);
 
     if (!adapter) {
