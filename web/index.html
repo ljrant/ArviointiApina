@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="ArviointiApina — local-first course gradebook for Abitti results and weighted course grades.">
+  <title>ArviointiApina</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <p class="eyebrow">Local-first teacher gradebook</p>
+      <h1>ArviointiApina</h1>
+    </div>
+    <div class="top-actions">
+      <button id="export-backup">Backup JSON</button>
+      <label class="button" for="restore-backup">Restore</label>
+      <input id="restore-backup" type="file" accept=".json,application/json" hidden>
+    </div>
+  </header>
+
+  <main class="shell">
+    <aside class="sidebar">
+      <section class="panel">
+        <div class="section-head">
+          <h2>Courses</h2>
+          <button id="add-course" class="small primary">+ New</button>
+        </div>
+        <select id="course-select" class="wide"></select>
+        <div class="button-row">
+          <button id="rename-course" class="small">Rename</button>
+          <button id="delete-course" class="small danger">Delete</button>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Calculation</h2>
+        <label>Grading system
+          <select id="grading-system" class="wide">
+            <option value="finnish">Finnish 4–10</option>
+            <option value="ib">IB 1–7</option>
+          </select>
+        </label>
+        <label>Missing assessment
+          <select id="missing-policy" class="wide">
+            <option value="redistribute">Redistribute available weights</option>
+            <option value="zero">Count missing as zero</option>
+          </select>
+        </label>
+        <button id="edit-boundaries" class="wide">Edit grade boundaries</button>
+      </section>
+
+      <section class="panel">
+        <h2>Data</h2>
+        <button id="export-csv" class="wide">Export course CSV</button>
+        <label class="button wide" for="import-csv">Import course CSV</label>
+        <input id="import-csv" type="file" accept=".csv,text/csv" hidden>
+        <p class="hint">Abitti pages cannot be scraped directly by this website because of browser site isolation. Use the browser extension/userscript to collect results, then import CSV/JSON here.</p>
+      </section>
+    </aside>
+
+    <section class="workspace">
+      <div class="workspace-head">
+        <div>
+          <p id="course-meta" class="eyebrow"></p>
+          <h2 id="course-title">Course</h2>
+        </div>
+        <div class="button-row">
+          <button id="add-student">+ Student</button>
+          <button id="add-assessment" class="primary">+ Assessment</button>
+        </div>
+      </div>
+
+      <div id="summary" class="summary-grid"></div>
+
+      <section class="table-card">
+        <div class="table-toolbar">
+          <input id="student-search" type="search" placeholder="Search students…">
+          <span id="weight-status" class="pill"></span>
+        </div>
+        <div class="table-wrap">
+          <table id="gradebook">
+            <thead></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+    </section>
+  </main>
+
+  <dialog id="weights-dialog">
+    <form method="dialog" class="dialog-card">
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">Individual weighting</p>
+          <h2 id="weights-student"></h2>
+        </div>
+        <button value="cancel" class="small">Close</button>
+      </div>
+      <p class="hint">Blank = course default. 0 = exclude this assessment for this student.</p>
+      <div id="weights-fields"></div>
+      <div class="button-row end">
+        <button id="reset-weights" type="button">Reset overrides</button>
+        <button id="save-weights" type="button" class="primary">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="boundaries-dialog">
+    <form method="dialog" class="dialog-card">
+      <div class="section-head">
+        <h2>Grade boundaries</h2>
+        <button value="cancel" class="small">Close</button>
+      </div>
+      <p class="hint">JSON object where each grade maps to the minimum weighted percentage.</p>
+      <textarea id="boundaries-json" rows="14"></textarea>
+      <div class="button-row end">
+        <button id="save-boundaries" type="button" class="primary">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="toast" role="status" aria-live="polite"></div>
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
