@@ -1,46 +1,48 @@
 # ArviointiApina
 
-ArviointiApina is primarily a **Tampermonkey userscript** for teacher-side grading workflows around Abitti.
+ArviointiApina on ensisijaisesti **Tampermonkey-userscript** opettajan OmaAbitti-arvioinnin ja kurssiarvosanojen hallintaan.
 
-## Primary project: Tampermonkey userscript
+## Pääprojekti: Tampermonkey-userscript
 
-Install the current script:
+Asenna nykyinen versio:
 
 https://raw.githubusercontent.com/ljrant/ArviointiApina/main/userscript/ArviointiApina.user.js
 
-Project website:
+Projektin esittelysivu:
 
 https://ljrant.github.io/ArviointiApina/
 
-### Current goals
+Sivun oletuskieli on suomi ja englannin voi valita FI / EN -valitsimesta.
 
-- collect total exam scores from Abitti review pages
-- maintain multiple courses/classes
-- match students primarily by normalized/fuzzy name, then email
-- treat Abitti UUID only as a last-resort hint because it can change between exams
-- store earned points and explicit maximum points for each assessment
-- weighted assessments and per-student weight overrides/exclusions
-- Finnish 4–10 and IB 1–7 grade boundaries
-- CSV export and full JSON backup/restore
-- compact grade panel usable on other websites
+### Nykyiset tavoitteet
 
-## Repository layout
+- kerää kokonaispisteet OmaAbitin tarkastelusivuilta
+- hallitse useita kursseja ja ryhmiä
+- tunnista opiskelijat ensisijaisesti normalisoidulla tai fuzzy-nimiosumalla, sitten sähköpostilla
+- käytä OmaAbitin UUID:tä vain viimeisenä vihjeenä, koska se voi vaihtua kokeiden välillä
+- tallenna saadut pisteet ja arvioinnin erilliset maksimipisteet
+- painotetut arvioinnit ja opiskelijakohtaiset painopoikkeukset / poissulut
+- suomalainen 4–10- ja IB 1–7 -arviointiasteikko
+- CSV-vienti ja täydellinen JSON-varmuuskopio / palautus
+- kompakti arvosanapaneeli käytettäväksi myös muilla verkkosivuilla
 
-- `userscript/ArviointiApina.user.js` — primary Tampermonkey userscript
-- `web/` — presentation/documentation website for the userscript
-- `src/`, `manifest.json` — experimental Chrome extension prototype
-- `.github/workflows/pages.yml` — deploys the presentation website
+## Repon rakenne
 
-## Browser extension / standalone app
+- `userscript/ArviointiApina.user.js` — ensisijainen Tampermonkey-userscript
+- `web/` — userscriptin esittely- ja asennussivusto
+- `src/`, `manifest.json` — kokeellinen Chrome-laajennusprototyyppi
+- `.github/workflows/pages.yml` — julkaisee esittelysivuston GitHub Pagesiin
 
-The Chrome-extension code currently in the repository is experimental. It may later become a standalone browser extension/app, but the userscript is the primary implementation for now.
+## Selainlaajennus / standalone-sovellus
 
-## Data and privacy
+Repon nykyinen Chrome-laajennuskoodi on kokeellinen. Siitä voidaan myöhemmin kehittää itsenäinen selainlaajennus tai sovellus, mutta userscript on toistaiseksi projektin pääversio.
 
-ArviointiApina is local-first. Gradebook data is stored locally by the userscript manager. The project does not require an ArviointiApina cloud account or server.
+## Data ja yksityisyys
 
-Teachers should protect browser profiles and exported backups appropriately because the data can contain student assessment information.
+ArviointiApina toimii local-first-periaatteella. Arviointikirjan tiedot tallennetaan paikallisesti userscript-managerin tallennustilaan. Projekti ei vaadi ArviointiApina-pilvitiliä tai palvelinta.
 
-## Development
+Opettajan tulee suojata selainprofiili ja viedyt varmuuskopiot asianmukaisesti, koska tiedot voivat sisältää opiskelijoiden arviointitietoja.
 
-Changes to the userscript should be made in `userscript/ArviointiApina.user.js`. Keep the website focused on installation, documentation, privacy, and project status rather than implementing a separate web gradebook.
+## Kehitys
+
+Userscriptin muutokset tehdään tiedostoon `userscript/ArviointiApina.user.js`. Verkkosivusto pidetään esittely-, asennus-, yksityisyys- ja projektitietosivuna eikä erillisenä verkkopohjaisena arviointikirjana.

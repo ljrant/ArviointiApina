@@ -1,71 +1,170 @@
 <!doctype html>
-<html lang="en">
+<html lang="fi">
 <head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="description" content="ArviointiApina is a local-first Tampermonkey gradebook for Abitti.">
-<title>ArviointiApina — Abitti grading helper</title>
-<link rel="stylesheet" href="./styles.css">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="ArviointiApina on paikallisesti toimiva Tampermonkey-työkalu OmaAbitti-arvioinnin ja kurssiarvosanojen hallintaan.">
+  <title>ArviointiApina — OmaAbitti-arvioinnin apuri</title>
+  <link rel="stylesheet" href="./styles.css">
+  <script defer src="./site.js"></script>
 </head>
 <body>
-<header class="site-header">
-  <a class="brand" href="./">ArviointiApina</a>
-  <nav><a href="#features">Features</a><a href="#install">Install</a><a href="#privacy">Privacy</a><a href="https://github.com/ljrant/ArviointiApina">GitHub</a></nav>
-</header>
-<main>
-<section class="hero">
-  <div>
-    <p class="eyebrow">Tampermonkey userscript for teachers</p>
-    <h1>Collect Abitti results.<br>Build the course grade.</h1>
-    <p class="lead">ArviointiApina adds a local gradebook on top of Abitti. Import exam totals, combine assessments with adjustable weights, handle per-student exceptions, and copy final grades where you need them.</p>
-    <div class="actions">
-      <a class="button primary" href="https://raw.githubusercontent.com/ljrant/ArviointiApina/main/userscript/ArviointiApina.user.js">Install userscript</a>
-      <a class="button" href="https://github.com/ljrant/ArviointiApina">View source</a>
+  <div class="scanlines" aria-hidden="true"></div>
+
+  <header class="site-header frame">
+    <a class="brand" href="./">ARVIOINTIAPINA</a>
+
+    <nav class="main-nav">
+      <a href="#features" data-i18n="nav_features">Ominaisuudet</a>
+      <a href="#install" data-i18n="nav_install">Asennus</a>
+      <a href="#privacy" data-i18n="nav_privacy">Yksityisyys</a>
+      <a href="https://github.com/ljrant/ArviointiApina">GitHub</a>
+    </nav>
+
+    <div class="lang-switch" aria-label="Kielivalinta">
+      <button class="lang-btn active" data-lang="fi">FI</button>
+      <button class="lang-btn" data-lang="en">EN</button>
     </div>
-    <p class="fine">Requires Tampermonkey or a compatible userscript manager.</p>
-  </div>
-  <div class="mockup">
-    <div class="mock-top"><strong>ArviointiApina</strong><span>Biology 1</span><button>Import Abitti</button></div>
-    <div class="tabs"><span class="active">Gradebook</span><span>Assessments</span><span>Students</span><span>Data</span></div>
-    <div class="mock-table">
-      <div class="row head"><span>Student</span><span>Test 1</span><span>Quiz</span><span>Weighted</span><span>Grade</span></div>
-      <div class="row"><span>Student A</span><span>38/50</span><span>8/10</span><span>78.4%</span><strong>8½</strong></div>
-      <div class="row"><span>Student B</span><span>44/50</span><span>—</span><span>88.0%</span><strong>9½</strong></div>
-      <div class="row"><span>Student C</span><span>31/50</span><span>7/10</span><span>65.2%</span><strong>7½</strong></div>
-    </div>
-  </div>
-</section>
+  </header>
 
-<section id="features" class="section">
-  <p class="eyebrow">What it does</p><h2>A practical course-grade workflow</h2>
-  <div class="feature-grid">
-    <article><h3>Import from Abitti</h3><p>Reads student names, emails and total scores from Abitti review pages. Maximum points stay explicit instead of being guessed.</p></article>
-    <article><h3>Multiple courses</h3><p>Keep several classes and courses in one local utility and switch between them from the panel.</p></article>
-    <article><h3>Weighted assessments</h3><p>Give exams, quizzes and other work different weights, then calculate a weighted course percentage.</p></article>
-    <article><h3>Per-student exceptions</h3><p>Exclude or reweight an assessment for one student without changing the course defaults.</p></article>
-    <article><h3>Name-first matching</h3><p>Match by exact/fuzzy name first, then email. Abitti UUID is only a last-resort hint because it may change between exams.</p></article>
-    <article><h3>Backup and export</h3><p>Export course CSV for spreadsheets and full JSON backups for moving data between browsers or devices.</p></article>
-  </div>
-</section>
+  <main>
+    <section class="hero">
+      <div class="hero-copy panel">
+        <p class="eyebrow" data-i18n="hero_eyebrow">Tampermonkey-lisäosa opettajalle</p>
+        <h1 data-i18n="hero_title">Kerää OmaAbitti-tulokset.<br>Laske kurssiarvosanat.</h1>
+        <p class="lead" data-i18n="hero_lead">
+          ArviointiApina lisää OmaAbitin päälle paikallisesti toimivan arvosanatyökalun.
+          Voit tuoda koetulokset, yhdistää useita arviointeja painotuksilla,
+          käsitellä opiskelijakohtaisia poikkeuksia ja kopioida lopulliset arvosanat sinne missä niitä tarvitset.
+        </p>
 
-<section id="install" class="section install">
-  <p class="eyebrow">Installation</p><h2>Three steps</h2>
-  <ol>
-    <li><strong>Install Tampermonkey</strong><span>Use Tampermonkey or another compatible userscript manager.</span></li>
-    <li><strong>Install ArviointiApina</strong><span>Open the userscript link and confirm installation.</span></li>
-    <li><strong>Open an Abitti review page</strong><span>The full panel opens on Abitti; elsewhere use the compact Grades button.</span></li>
-  </ol>
-  <a class="button primary large" href="https://raw.githubusercontent.com/ljrant/ArviointiApina/main/userscript/ArviointiApina.user.js">Install ArviointiApina.user.js</a>
-</section>
+        <div class="actions">
+          <a class="button primary" href="https://raw.githubusercontent.com/ljrant/ArviointiApina/main/userscript/ArviointiApina.user.js" data-i18n="hero_install">Asenna userscript</a>
+          <a class="button" href="https://github.com/ljrant/ArviointiApina" data-i18n="hero_source">Avaa lähdekoodi</a>
+        </div>
 
-<section id="privacy" class="section split">
-  <div><p class="eyebrow">Privacy</p><h2>Local-first by design</h2></div>
-  <div><p>ArviointiApina stores gradebook data in the userscript manager's local storage. It does not require an ArviointiApina cloud account or send student data to an ArviointiApina server.</p><p>Protect your browser profile and exported backups appropriately because they can contain student assessment data.</p></div>
-</section>
+        <p class="fine" data-i18n="hero_fine">Vaatii Tampermonkeyn tai muun yhteensopivan userscript-managerin.</p>
+      </div>
 
-<section class="section roadmap">
-  <div><p class="eyebrow">Project direction</p><h2>Userscript first. Browser extension later.</h2></div>
-  <p>This repository is primarily the development home of the Tampermonkey userscript. The existing Chrome-extension prototype remains experimental and may later become a standalone browser extension/app using the same gradebook model.</p>
-</section>
-</main>
-<footer><span>ArviointiApina</span><a href="https://github.com/ljrant/ArviointiApina">Source & issues on GitHub</a></footer>
-</body></html>
+      <div class="mockup panel" aria-label="ArviointiApinan käyttöliittymäesikatselu">
+        <div class="mock-titlebar">
+          <span>ARVIOINTIAPINA :: OMAABITTI MODULE</span>
+          <span class="status-dot">ONLINE</span>
+        </div>
+
+        <div class="mock-toolbar">
+          <button data-i18n="mock_import">TUO OMAABITISTA</button>
+          <button data-i18n="mock_gradebook">ARVIOINTIKIRJA</button>
+          <button data-i18n="mock_export">VIE TIEDOT</button>
+        </div>
+
+        <div class="mock-window">
+          <div class="mock-row mock-head">
+            <span data-i18n="table_student">Opiskelija</span>
+            <span>TESTI 1</span>
+            <span>QUIZ</span>
+            <span data-i18n="table_weighted">Painotettu</span>
+            <span data-i18n="table_grade">Arvosana</span>
+          </div>
+          <div class="mock-row"><span>Student A</span><span>38/50</span><span>8/10</span><span>78.4%</span><strong>8½</strong></div>
+          <div class="mock-row"><span>Student B</span><span>44/50</span><span>—</span><span>88.0%</span><strong>9½</strong></div>
+          <div class="mock-row"><span>Student C</span><span>31/50</span><span>7/10</span><span>65.2%</span><strong>7½</strong></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="features" class="section">
+      <div class="section-heading panel">
+        <p class="eyebrow" data-i18n="features_eyebrow">Toiminnot</p>
+        <h2 data-i18n="features_title">Käytännöllinen työnkulku OmaAbitti-arviointiin</h2>
+      </div>
+
+      <div class="feature-grid">
+        <article class="panel">
+          <h3 data-i18n="f1_title">Tuonti OmaAbitista</h3>
+          <p data-i18n="f1_text">Lukee opiskelijoiden nimet, sähköpostit ja kokonaispisteet OmaAbitin tarkastelusivulta. Kokeen maksimipisteet pysyvät erillisenä tietona.</p>
+        </article>
+
+        <article class="panel">
+          <h3 data-i18n="f2_title">Useita kursseja</h3>
+          <p data-i18n="f2_text">Hallitse useita ryhmiä ja kursseja samassa työkalussa ja vaihda niiden välillä nopeasti.</p>
+        </article>
+
+        <article class="panel">
+          <h3 data-i18n="f3_title">Painotetut arvioinnit</h3>
+          <p data-i18n="f3_text">Anna kokeille, quizzeille ja muille suorituksille eri painotukset ja laske niistä kurssin kokonaisprosentti.</p>
+        </article>
+
+        <article class="panel">
+          <h3 data-i18n="f4_title">Opiskelijakohtaiset poikkeukset</h3>
+          <p data-i18n="f4_text">Voit poistaa tai muuttaa yksittäisen arvioinnin painoa vain yhdelle opiskelijalle ilman että kurssin oletukset muuttuvat.</p>
+        </article>
+
+        <article class="panel">
+          <h3 data-i18n="f5_title">Nimipohjainen tunnistus</h3>
+          <p data-i18n="f5_text">Tunnistus tehdään ensisijaisesti nimellä, myös osittaisella tai fuzzy-osumalla, sitten sähköpostilla. OmaAbitin UUID toimii vain viimeisenä vihjeenä.</p>
+        </article>
+
+        <article class="panel">
+          <h3 data-i18n="f6_title">Varmuuskopio ja vienti</h3>
+          <p data-i18n="f6_text">Vie CSV taulukkolaskentaa varten tai koko tietokanta JSON-varmuuskopiona toiseen selaimeen tai laitteeseen.</p>
+        </article>
+      </div>
+    </section>
+
+    <section id="install" class="section">
+      <div class="section-heading panel">
+        <p class="eyebrow" data-i18n="install_eyebrow">Asennus</p>
+        <h2 data-i18n="install_title">Kolme vaihetta käyttöön</h2>
+      </div>
+
+      <ol class="steps">
+        <li class="panel">
+          <strong data-i18n="s1_title">1. Asenna Tampermonkey</strong>
+          <span data-i18n="s1_text">Asenna Tampermonkey tai muu yhteensopiva userscript-manager selaimeesi.</span>
+        </li>
+        <li class="panel">
+          <strong data-i18n="s2_title">2. Asenna ArviointiApina</strong>
+          <span data-i18n="s2_text">Avaa alla oleva asennuslinkki ja hyväksy scriptin asennus.</span>
+        </li>
+        <li class="panel">
+          <strong data-i18n="s3_title">3. Avaa OmaAbitti</strong>
+          <span data-i18n="s3_text">Täysi paneeli avautuu oletuksena OmaAbitin tulossivulla. Muilla sivuilla voit käyttää kompaktia Grades-painiketta.</span>
+        </li>
+      </ol>
+
+      <div class="cta-panel panel">
+        <a class="button primary large" href="https://raw.githubusercontent.com/ljrant/ArviointiApina/main/userscript/ArviointiApina.user.js" data-i18n="install_cta">Asenna ArviointiApina.user.js</a>
+      </div>
+    </section>
+
+    <section id="privacy" class="section split">
+      <div class="panel">
+        <p class="eyebrow" data-i18n="privacy_eyebrow">Yksityisyys</p>
+        <h2 data-i18n="privacy_title">Paikallinen tallennus oletuksena</h2>
+      </div>
+
+      <div class="panel">
+        <p data-i18n="privacy_text1">ArviointiApina tallentaa tiedot userscript-managerin paikalliseen tallennustilaan. Työkalu ei vaadi pilvipalvelua eikä lähetä opiskelijatietoja ArviointiApinan palvelimelle.</p>
+        <p data-i18n="privacy_text2">Koska aineisto voi sisältää opiskelijoiden arviointitietoja, suojaa selainprofiilisi ja vie vain tarpeelliset varmuuskopiot.</p>
+      </div>
+    </section>
+
+    <section class="section split">
+      <div class="panel">
+        <p class="eyebrow" data-i18n="roadmap_eyebrow">Projektin suunta</p>
+        <h2 data-i18n="roadmap_title">Userscript ensin. Selainlaajennus myöhemmin.</h2>
+      </div>
+
+      <div class="panel">
+        <p data-i18n="roadmap_text">Tämä repo on ensisijaisesti ArviointiApinan Tampermonkey-userscriptin kehityskoti. Chrome-laajennus / standalone-sovellus on mahdollinen myöhempi kehityssuunta, mutta nykyinen pääversio on userscript.</p>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer frame">
+    <span>ARVIOINTIAPINA</span>
+    <a href="https://github.com/ljrant/ArviointiApina" data-i18n="footer_link">Lähdekoodi ja issuet GitHubissa</a>
+  </footer>
+</body>
+</html>
