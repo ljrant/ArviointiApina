@@ -1,41 +1,46 @@
-# Arviointiapina
+# ArviointiApina
 
-Arviointiapina is a local-first teacher grading utility for collecting exam results, combining them into a course gradebook, and calculating weighted final grades.
+ArviointiApina is primarily a **Tampermonkey userscript** for teacher-side grading workflows around Abitti.
 
-## Web app
+## Primary project: Tampermonkey userscript
 
-The repository now includes a static web application in `web/`.
+Install the current script:
 
-Features:
-- multiple courses/classes
-- students as rows and assessments as columns
-- raw points + per-assessment maximum points
-- adjustable default weights
-- per-student weight overrides and exclusions
-- missing-result redistribution or zero policy
-- Finnish 4–10 and IB 1–7 boundary sets
-- CSV import/export
-- full JSON backup/restore
-- local browser storage only
+https://raw.githubusercontent.com/ljrant/ArviointiApina/main/userscript/ArviointiApina.user.js
 
-The web app deliberately does not scrape Abitti directly: a normal website cannot access another site's DOM because of browser origin isolation. The browser extension/userscript remains the collector for Abitti. Export collected results as CSV/JSON and import them into the web app.
+Project website:
 
-### Local use
+https://ljrant.github.io/ArviointiApina/
 
-Open `web/index.html` in a browser, or serve the repository with any static server.
+### Current goals
 
-### GitHub Pages
+- collect total exam scores from Abitti review pages
+- maintain multiple courses/classes
+- match students primarily by normalized/fuzzy name, then email
+- treat Abitti UUID only as a last-resort hint because it can change between exams
+- store earned points and explicit maximum points for each assessment
+- weighted assessments and per-student weight overrides/exclusions
+- Finnish 4–10 and IB 1–7 grade boundaries
+- CSV export and full JSON backup/restore
+- compact grade panel usable on other websites
 
-`.github/workflows/pages.yml` deploys the `web/` directory when changes reach `main`. GitHub Pages must be enabled for the repository with **GitHub Actions** selected as the deployment source.
+## Repository layout
 
-## Chrome extension
+- `userscript/ArviointiApina.user.js` — primary Tampermonkey userscript
+- `web/` — presentation/documentation website for the userscript
+- `src/`, `manifest.json` — experimental Chrome extension prototype
+- `.github/workflows/pages.yml` — deploys the presentation website
 
-The existing Manifest V3 extension remains under `src/`.
+## Browser extension / standalone app
 
-Current extension goals:
-- Abitti adapter
-- right-hand side panel
-- local-only data
-- CSV grade import
-- automatic grade calculation
-- site-specific adapters
+The Chrome-extension code currently in the repository is experimental. It may later become a standalone browser extension/app, but the userscript is the primary implementation for now.
+
+## Data and privacy
+
+ArviointiApina is local-first. Gradebook data is stored locally by the userscript manager. The project does not require an ArviointiApina cloud account or server.
+
+Teachers should protect browser profiles and exported backups appropriately because the data can contain student assessment information.
+
+## Development
+
+Changes to the userscript should be made in `userscript/ArviointiApina.user.js`. Keep the website focused on installation, documentation, privacy, and project status rather than implementing a separate web gradebook.
