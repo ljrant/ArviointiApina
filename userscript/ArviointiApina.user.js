@@ -13,7 +13,7 @@
 // @homepageURL  https://ljrant.github.io/ArviointiApina/
 // @supportURL   https://github.com/ljrant/ArviointiApina/issues
 // @downloadURL  https://raw.githubusercontent.com/ljrant/ArviointiApina/beta/userscript/ArviointiApina.user.js
-// @updateURL    https://raw.githubusercontent.com/ljrant/ArviointiApina/main/userscript/ArviointiApina.user.js
+// @updateURL    https://raw.githubusercontent.com/ljrant/ArviointiApina/beta/userscript/ArviointiApina.user.js
 // ==/UserScript==
 
 (() => {
@@ -244,7 +244,7 @@
     const slash=raw.match(/(-?\d+(?:[.,]\d+)?)\s*\/\s*(-?\d+(?:[.,]\d+)?)/);
     if(slash)return{points:num(slash[1]),maxPoints:num(slash[2])};
 
-    const outOf=raw.match(/(-?\d+(?:[.,]\d+)?)\s*(?:out of|of|/|pistett[aä]?\s*(?:maksimista)?)\s*(-?\d+(?:[.,]\d+)?)/i);
+    const outOf=raw.match(/(-?\\d+(?:[.,]\\d+)?)\\s*(?:out of|of|pistettä\\s*(?:/|maksimista)?|pistetta\\s*(?:/|maksimista)?)\\s*(-?\\d+(?:[.,]\\d+)?)/i);
     if(outOf)return{points:num(outOf[1]),maxPoints:num(outOf[2])};
 
     return{points:num(raw),maxPoints:NaN};
