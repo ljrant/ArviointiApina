@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         ArviointiApina
+// @name         ArviointiApina BETA
 // @namespace    https://github.com/ljrant/ArviointiApina
-// @version      0.3.0
-// @description  Local-first Abitti result collector and weighted course gradebook.
+// @version      0.4.0-beta.1
+// @description  BETA: OmaAbitti + Google Forms result collector and weighted course gradebook.
 // @match        *://*/*
 // @grant        GM_getValue
 // @grant        GM_setValue
@@ -12,17 +12,18 @@
 // @run-at       document-idle
 // @homepageURL  https://ljrant.github.io/ArviointiApina/
 // @supportURL   https://github.com/ljrant/ArviointiApina/issues
-// @downloadURL  https://raw.githubusercontent.com/ljrant/ArviointiApina/main/userscript/ArviointiApina.user.js
+// @downloadURL  https://raw.githubusercontent.com/ljrant/ArviointiApina/beta/userscript/ArviointiApina.user.js
 // @updateURL    https://raw.githubusercontent.com/ljrant/ArviointiApina/main/userscript/ArviointiApina.user.js
 // ==/UserScript==
 
 (() => {
   "use strict";
 
-  const KEY="arviointiapina_userscript_v1";
+  const KEY="arviointiapina_userscript_beta_v1";
   const FINNISH={"10":90,"9½":85,"9":80,"8½":75,"8":70,"7½":65,"7":60,"6½":55,"6":50,"5½":45,"5":40,"4½":30,"4":0};
   const IB={"7":85,"6":70,"5":55,"4":40,"3":25,"2":10,"1":0};
   const IS_ABITTI=location.hostname==="oma.abitti.fi"&&location.pathname.startsWith("/school/review/");
+  const IS_GOOGLE_FORMS=location.hostname==="docs.google.com"&&location.pathname.includes("/forms/");
   const AUTO=.93,SUGGEST=.80;
   const uid=(p="id")=>p+"_"+Date.now().toString(36)+"_"+Math.random().toString(36).slice(2,8);
   const now=()=>new Date().toISOString();
@@ -189,6 +190,183 @@
     }
     download(c.name.replace(/[^\w-]+/g,"_")+"_gradebook.csv","\uFEFF"+lines.join("\r\n"),"text/csv;charset=utf-8");
   }
+
+  function parseDelimited(text){
+    text=String(text||"").replace(/^\uFEFF/,"");
+    const first=(text.split(/\r?\n/)[0]||"");
+    const candidates=[",",";","\t"];
+    const counts=candidates.map(sep=>[sep,(first.split(sep).length-1)]);
+    const sep=counts.sort((a,b)=>b[1]-a[1])[0][0];
+
+    const rows=[];let row=[],cell="",quoted=false;
+    for(let i=0;i<text.length;i++){
+      const ch=text[i];
+      if(quoted){
+        if(ch==='"'){
+          if(text[i+1]==='"'){cell+='"';i++}
+          else quoted=false;
+        } else cell+=ch;
+        continue;
+      }
+      if(ch==='"')quoted=true;
+      else if(ch===sep){row.push(cell);cell=""}
+      else if(ch==="\n"||ch==="\r"){
+        if(ch==="\r"&&text[i+1]==="\n")i++;
+        row.push(cell);cell="";
+        if(row.some(v=>String(v).trim()))rows.push(row);
+        row=[];
+      } else cell+=ch;
+    }
+    row.push(cell);
+    if(row.some(v=>String(v).trim()))rows.push(row);
+    return rows;
+  }
+
+  function headerIndex(headers,candidates){
+    const normalized=headers.map(h=>norm(h));
+    for(const candidate of candidates){
+      const target=norm(candidate);
+      const exact=normalized.findIndex(h=>h===target);
+      if(exact>=0)return exact;
+    }
+    for(const candidate of candidates){
+      const target=norm(candidate);
+      const partial=normalized.findIndex(h=>h.includes(target)||target.includes(h));
+      if(partial>=0)return partial;
+    }
+    return -1;
+  }
+
+  function parseQuizScore(value){
+    const raw=String(value??"").trim();
+    if(!raw)return{points:NaN,maxPoints:NaN};
+
+    const slash=raw.match(/(-?\d+(?:[.,]\d+)?)\s*\/\s*(-?\d+(?:[.,]\d+)?)/);
+    if(slash)return{points:num(slash[1]),maxPoints:num(slash[2])};
+
+    const outOf=raw.match(/(-?\d+(?:[.,]\d+)?)\s*(?:out of|of|/|pistett[aä]?\s*(?:maksimista)?)\s*(-?\d+(?:[.,]\d+)?)/i);
+    if(outOf)return{points:num(outOf[1]),maxPoints:num(outOf[2])};
+
+    return{points:num(raw),maxPoints:NaN};
+  }
+
+  async function importGoogleFormsCSV(file){
+    const text=await file.text();
+    const rows=parseDelimited(text);
+    if(rows.length<2)throw new Error("CSV-tiedostossa ei ole vastauksia.");
+
+    const headers=rows.shift().map(v=>String(v||"").trim());
+    const nameCol=headerIndex(headers,[
+      "Name","Student","Student name","Full name","Nimi","Opiskelija","Oppilas","Nimi ja sukunimi"
+    ]);
+    const emailCol=headerIndex(headers,[
+      "Email Address","Email","E-mail","Sähköposti","Sähköpostiosoite"
+    ]);
+    const scoreCol=headerIndex(headers,[
+      "Score","Quiz score","Points","Total points","Pisteet","Pistemäärä","Kokonaispisteet"
+    ]);
+
+    if(scoreCol<0){
+      throw new Error('Pistesaraketta ei löytynyt. Odotettu otsikko esimerkiksi "Score", "Points" tai "Pisteet".');
+    }
+    if(nameCol<0&&emailCol<0){
+      throw new Error("Opiskelijan nimeä tai sähköpostisaraketta ei löytynyt.");
+    }
+
+    const parsed=rows.map(row=>{
+      const score=parseQuizScore(row[scoreCol]);
+      return{
+        name:nameCol>=0?String(row[nameCol]||"").trim():"",
+        email:emailCol>=0?String(row[emailCol]||"").trim():"",
+        points:score.points,
+        maxPoints:score.maxPoints
+      };
+    }).filter(x=>(x.name||x.email)&&Number.isFinite(x.points));
+
+    if(!parsed.length)throw new Error("CSV:stä ei löytynyt yhtään tunnistettavaa opiskelijan pistetulosta.");
+
+    const detectedMax=[...new Set(parsed.map(x=>x.maxPoints).filter(Number.isFinite))];
+    let maxPoints=detectedMax.length===1?detectedMax[0]:NaN;
+    if(!Number.isFinite(maxPoints)||!(maxPoints>0)){
+      maxPoints=num(prompt("Google Forms -kyselyn maksimipisteet:", ""));
+      if(!(maxPoints>0))throw new Error("Maksimipisteet tarvitaan.");
+    }
+
+    let c=course();
+    if(!c){
+      const courseName=prompt("Luo kurssi / ryhmä:", "Google Forms");
+      if(!courseName?.trim())return;
+      c=createCourse(courseName.trim());
+    }
+
+    const defaultName=String(file.name||"Google Forms quiz").replace(/\.(csv|tsv|txt)$/i,"");
+    const assessmentName=prompt("Arvioinnin nimi:", defaultName);
+    if(!assessmentName?.trim())return;
+
+    const used=Object.values(c.assessments).reduce((sum,a)=>sum+(num(a.defaultWeight)||0),0);
+    const weight=num(prompt("Arvioinnin paino %:", String(Math.max(0,100-used))));
+    if(!(weight>=0))throw new Error("Virheellinen paino.");
+
+    let a=Object.values(c.assessments).find(x=>
+      x.name.trim().toLowerCase()===assessmentName.trim().toLowerCase()
+    );
+    if(a){
+      if(!confirm('"'+a.name+'" on jo olemassa. Päivitetäänkö tulokset?'))return;
+      a.maxPoints=maxPoints;
+      a.defaultWeight=weight;
+      a.source={type:"google-forms-csv",fileName:file.name||""};
+    }else{
+      const id=uid("assessment");
+      a=c.assessments[id]={
+        id,
+        name:assessmentName.trim(),
+        maxPoints,
+        defaultWeight:weight,
+        type:"quiz",
+        source:{type:"google-forms-csv",fileName:file.name||""},
+        results:{},
+        createdAt:now()
+      };
+    }
+
+    let created=0,matched=0,skipped=0;
+    for(const incoming of parsed){
+      const identity={name:incoming.name,email:incoming.email,uuid:""};
+      let m=matchStudent(c,identity),student=null;
+      if(m){
+        if(!m.confirm||confirmMatch(identity,m)){student=m.student;matched++}
+      }
+      if(!student){student=createStudent(c,identity);created++}
+      attachIdentity(student,identity);
+
+      if(!Number.isFinite(incoming.points)){skipped++;continue}
+      a.results[student.id]={
+        points:incoming.points,
+        sourceName:incoming.name||"",
+        sourceEmail:incoming.email||"",
+        importedAt:now(),
+        sourceType:"google-forms-csv"
+      };
+    }
+
+    c.updatedAt=now();
+    save();
+    render();
+    alert(
+      "Google Forms -tuonti valmis.\n"+
+      "Tuloksia: "+parsed.length+"\n"+
+      "Yhdistetty olemassa oleviin: "+matched+"\n"+
+      "Uusia opiskelijoita: "+created+
+      (skipped?"\nOhitettu: "+skipped:"")
+    );
+  }
+
+  function chooseGoogleFormsCSV(){
+    choose(".csv,.tsv,text/csv,text/tab-separated-values",file=>{
+      importGoogleFormsCSV(file).catch(error=>alert("Google Forms -tuonti epäonnistui:\n"+error.message));
+    });
+  }
+
   function backup(){download("arviointiapina-backup-"+new Date().toISOString().slice(0,10)+".json",JSON.stringify({type:"ArviointiApina",database:db},null,2),"application/json;charset=utf-8")}
   function choose(accept,cb){const i=document.createElement("input");i.type="file";i.accept=accept;i.hidden=true;i.onchange=()=>{const f=i.files?.[0];if(f)cb(f);i.remove()};document.body.appendChild(i);i.click()}
   async function restore(file){try{const p=JSON.parse(await file.text()),next=p.database||p;if(!next?.courses)throw new Error("Not a valid backup.");if(!confirm("Replace all current data with this backup?"))return;db={...fresh(),...next,settings:{...fresh().settings,...(next.settings||{})},courses:next.courses||{}};save();render()}catch(e){alert(e.message)}}
@@ -221,7 +399,7 @@
   }
 
   function header(p){
-    const h=document.createElement("div");h.className="aa-head";const title=document.createElement("div");title.className="aa-title";title.textContent="ArviointiApina";h.appendChild(title);
+    const h=document.createElement("div");h.className="aa-head";const title=document.createElement("div");title.className="aa-title";title.textContent="ArviointiApina BETA";h.appendChild(title);
     const s=document.createElement("select");s.className="aa-select";for(const c of Object.values(db.courses).sort((a,b)=>a.name.localeCompare(b.name,"fi"))){const o=document.createElement("option");o.value=c.id;o.textContent=c.name;o.selected=c.id===db.settings.activeCourseId;s.appendChild(o)}s.onchange=()=>{db.settings.activeCourseId=s.value;save();render()};h.appendChild(s);
     h.appendChild(btn("+ Course",()=>{const n=prompt("Course/class name:");if(n?.trim()){createCourse(n);render()}}));
     if(IS_ABITTI)h.appendChild(btn("Import Abitti",importDialog,"primary"));
@@ -264,7 +442,17 @@
   }
 
   function data(parent,c){
-    const a=document.createElement("div");a.className="aa-card";a.innerHTML="<h3>Course data</h3>";a.appendChild(btn("Export course CSV",()=>exportCSV(c)));parent.appendChild(a);
+    const a=document.createElement("div");a.className="aa-card";a.innerHTML="<h3>Course data</h3>";
+    a.appendChild(btn("Import Google Forms CSV (BETA)",chooseGoogleFormsCSV,"primary"));
+    a.appendChild(btn("Export course CSV",()=>exportCSV(c)));
+    if(IS_GOOGLE_FORMS){
+      const hint=document.createElement("div");
+      hint.className="aa-muted aa-small";
+      hint.style.marginTop="7px";
+      hint.textContent="Google Forms -sivu havaittu. Beta käyttää toistaiseksi CSV-vientiä, jotta tuonti ei riipu Googlen muuttuvasta editori-DOM:sta.";
+      a.appendChild(hint);
+    }
+    parent.appendChild(a);
     const b=document.createElement("div");b.className="aa-card";b.innerHTML="<h3>Full backup</h3><div class='aa-muted aa-small'>JSON preserves all courses, aliases, weights and settings.</div>";b.appendChild(btn("Export JSON backup",backup,"primary"));b.appendChild(btn("Restore JSON backup",()=>choose(".json,application/json",restore)));parent.appendChild(b);
     const d=document.createElement("div");d.className="aa-card";d.innerHTML="<h3>Course management</h3>";d.appendChild(btn("Rename course",()=>{const n=prompt("Course name:",c.name);if(n?.trim()){c.name=n.trim();save();render()}}));d.appendChild(btn("Delete course",()=>{if(confirm('Delete "'+c.name+'" and all its data?')){delete db.courses[c.id];db.settings.activeCourseId=null;save();render()}},"danger"));parent.appendChild(d);
   }
@@ -287,6 +475,7 @@
 
   GM_registerMenuCommand("Open ArviointiApina",()=>{open=true;compact=false;render()});
   GM_registerMenuCommand("Open compact grade panel",()=>{open=true;compact=true;render()});
+  GM_registerMenuCommand("Import Google Forms quiz CSV (BETA)",chooseGoogleFormsCSV);
   GM_registerMenuCommand("Export ArviointiApina backup",backup);
 
   ensureRoot();render();
