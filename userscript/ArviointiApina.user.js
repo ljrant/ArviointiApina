@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ArviointiApina BETA
 // @namespace    https://github.com/ljrant/ArviointiApina
-// @version      0.4.0-beta.1
+// @version      0.4.0-beta.2
 // @description  BETA: OmaAbitti + Google Forms result collector and weighted course gradebook.
 // @match        *://*/*
 // @grant        GM_getValue
@@ -123,7 +123,7 @@
 
   function detectExam(){
     if(!IS_ABITTI)return null;
-    const name=document.querySelector("h1.exam-name")?.textContent?.trim()||document.querySelector(".exam-name")?.textContent?.trim()||document.title||"Abitti exam";
+    const name=document.querySelector("h1.exam-name")?.textContent?.trim()||document.querySelector(".exam-name")?.textContent?.trim()||document.title||"OmaAbitti exam";
     const students=[...document.querySelectorAll("#scoreTable tbody tr.student")].map(row=>{
       const g=row.querySelector(".gradingText");
       return{name:studentNameFromRow(row),email:row.querySelector(".email")?.textContent?.trim()||"",uuid:g?.getAttribute("data-student-uuid")||"",answerPaperId:g?.getAttribute("data-answer-paper-id")||"",points:num(row.querySelector(".totalScore")?.textContent)};
@@ -136,26 +136,108 @@
     return confirm("Possible student match:\n\nImported: "+(incoming.name||incoming.email||"(unknown)")+"\nExisting: "+m.student.canonicalName+"\n\n"+detail+"\n\nSame student?");
   }
 
-  function importExam(c,examName,maxPoints,weight){
+
+  function matchLabel(m){
+    if(!m)return "New student";
+    if(m.method==="exact-name")return "Existing: "+m.student.canonicalName+" · exact name";
+    if(m.method==="email")return "Existing: "+m.student.canonicalName+" · email";
+    if(m.method==="fuzzy-name")return "Possible: "+m.student.canonicalName+" · fuzzy "+Math.round(m.score*100)+"%"+(m.confirm?" · confirm":"");
+    return "Possible: "+m.student.canonicalName+" · UUID hint · confirm";
+  }
+
+  function chooseImportStudents(c,detected){
+    return new Promise(resolve=>{
+      const overlay=document.createElement("div");overlay.className="aa-modal-overlay";
+      const modal=document.createElement("div");modal.className="aa-modal";
+      const head=document.createElement("div");head.className="aa-modal-head";head.textContent="Choose OmaAbitti students to import";
+      const body=document.createElement("div");body.className="aa-modal-body";
+      const note=document.createElement("div");note.className="aa-muted aa-small";note.textContent="Only checked students will be imported or updated. Unselected existing exam results stay unchanged.";
+      body.appendChild(note);
+
+      const controls=document.createElement("div");controls.className="aa-toolbar";
+      const existingLabel=document.createElement("label");
+      const existingOnly=document.createElement("input");existingOnly.type="checkbox";
+      existingLabel.append(existingOnly,document.createTextNode(" Only students already on this course"));
+      const rows=[];
+      controls.append(existingLabel,btn("Select all",()=>rows.forEach(r=>{if(!r.cb.disabled)r.cb.checked=true})),btn("Select none",()=>rows.forEach(r=>r.cb.checked=false)));
+      body.appendChild(controls);
+
+      const wrap=document.createElement("div");wrap.className="aa-table-wrap";
+      const table=document.createElement("table");table.className="aa-table aa-import-table";
+      table.innerHTML="<thead><tr><th></th><th>OmaAbitti student</th><th>Email</th><th>Points</th><th>Course match</th></tr></thead>";
+      const tbody=document.createElement("tbody");
+
+      detected.students.forEach((incoming,index)=>{
+        const m=matchStudent(c,incoming);
+        const tr=document.createElement("tr");
+        const a=document.createElement("td"),b=document.createElement("td"),d=document.createElement("td"),e=document.createElement("td"),g=document.createElement("td");
+        const cb=document.createElement("input");cb.type="checkbox";
+        const hasScore=Number.isFinite(num(incoming.points));cb.checked=hasScore;cb.disabled=!hasScore;a.appendChild(cb);
+        b.textContent=incoming.name||"(no name)";
+        d.textContent=incoming.email||"";
+        e.textContent=hasScore?fmt(num(incoming.points),2):"—";
+        g.textContent=matchLabel(m)+(hasScore?"":" · no score");
+        if(!hasScore)tr.classList.add("aa-row-disabled");
+        tr.append(a,b,d,e,g);tbody.appendChild(tr);
+        rows.push({index,m,cb,tr,status:g,base:matchLabel(m),hasScore});
+      });
+
+      const refresh=()=>rows.forEach(r=>{
+        const disabled=!r.hasScore||(existingOnly.checked&&!r.m);
+        r.cb.disabled=disabled;if(disabled)r.cb.checked=false;
+        r.tr.classList.toggle("aa-row-disabled",disabled);
+        r.status.textContent=r.base+(existingOnly.checked&&!r.m?" · skipped in existing-only mode":(!r.hasScore?" · no score":""));
+      });
+      existingOnly.onchange=refresh;
+
+      table.appendChild(tbody);wrap.appendChild(table);body.appendChild(wrap);
+      const foot=document.createElement("div");foot.className="aa-modal-foot";
+      const close=v=>{overlay.remove();resolve(v)};
+      foot.append(btn("Cancel",()=>close(null)),btn("Import selected",()=>{
+        const selected=rows.filter(r=>r.cb.checked&&!r.cb.disabled).map(r=>r.index);
+        if(!selected.length)return alert("Select at least one student.");
+        close({selected,existingOnly:existingOnly.checked});
+      },"primary"));
+      modal.append(head,body,foot);overlay.appendChild(modal);document.body.appendChild(overlay);
+      overlay.onclick=ev=>{if(ev.target===overlay)close(null)};
+    });
+  }
+
+  function importExam(c,examName,maxPoints,weight,selectedIndexes=null,existingOnly=false){
     const detected=detectExam();maxPoints=num(maxPoints);weight=num(weight);
-    if(!detected?.students.length)return alert("No Abitti results detected.");
+    if(!detected?.students.length)return alert("No OmaAbitti results detected.");
     if(!(maxPoints>0))return alert("Enter a valid maximum score.");
     if(!(weight>=0))return alert("Enter a valid weight.");
+    const selected=new Set(Array.isArray(selectedIndexes)?selectedIndexes:detected.students.map((_,i)=>i));
 
     let a=Object.values(c.assessments).find(x=>x.source?.reviewPath===detected.reviewPath)||Object.values(c.assessments).find(x=>x.name.toLowerCase()===examName.toLowerCase());
-    if(a){if(!confirm('"'+a.name+'" already exists. Update its results?'))return;a.name=examName;a.maxPoints=maxPoints;a.defaultWeight=weight}
-    else{const id=uid("assessment");a=c.assessments[id]={id,name:examName,maxPoints,defaultWeight:weight,type:"exam",source:{type:"abitti",reviewPath:detected.reviewPath},results:{},createdAt:now()}}
-
-    let created=0,matched=0;
-    for(const incoming of detected.students){
-      let m=matchStudent(c,incoming),s=null;
-      if(m){if(!m.confirm||confirmMatch(incoming,m)){s=m.student;matched++}}
-      if(!s){s=createStudent(c,incoming);created++}
-      attachIdentity(s,incoming);
-      a.results[s.id]={points:incoming.points,answerPaperId:incoming.answerPaperId||null,sourceName:incoming.name||"",sourceEmail:incoming.email||"",sourceAbittiUuid:incoming.uuid||"",importedAt:now()};
+    if(a){
+      if(!confirm('"'+a.name+'" already exists. Update only the selected students?\n\nUnselected existing results will be kept.'))return;
+      a.name=examName;a.maxPoints=maxPoints;a.defaultWeight=weight;a.updatedAt=now();
+    }else{
+      const id=uid("assessment");
+      a=c.assessments[id]={id,name:examName,maxPoints,defaultWeight:weight,type:"exam",source:{type:"omaabitti",reviewPath:detected.reviewPath},results:{},createdAt:now(),updatedAt:now()};
     }
-    c.updatedAt=now();save();render();alert("Import complete.\nMatched: "+matched+"\nNew students: "+created);
+
+    let created=0,matched=0,imported=0,skipped=0,skippedNotOnCourse=0;
+    detected.students.forEach((incoming,index)=>{
+      if(!selected.has(index))return;
+      if(!Number.isFinite(num(incoming.points))){skipped++;return}
+      let m=matchStudent(c,incoming),student=null;
+      if(m&&(!m.confirm||confirmMatch(incoming,m))){student=m.student;matched++}
+      if(!student){
+        if(existingOnly){skippedNotOnCourse++;return}
+        student=createStudent(c,incoming);created++;
+      }
+      attachIdentity(student,incoming);
+      a.results[student.id]={points:num(incoming.points),answerPaperId:incoming.answerPaperId||null,sourceName:incoming.name||"",sourceEmail:incoming.email||"",sourceAbittiUuid:incoming.uuid||"",importedAt:now()};
+      imported++;
+    });
+
+    c.updatedAt=now();save();render();
+    alert("Import complete.\nImported/updated: "+imported+"\nMatched existing students: "+matched+"\nNew students: "+created+"\nSkipped (not on course): "+skippedNotOnCourse+"\nOther skipped: "+skipped);
   }
+
 
   function weightFor(s,a){
     if(Object.prototype.hasOwnProperty.call(s.weightingOverrides||{},a.id)){const n=num(s.weightingOverrides[a.id]);return Number.isFinite(n)?Math.max(0,n):0}
@@ -381,8 +463,7 @@
   .aa-content{flex:1;overflow:auto;padding:9px}.aa-toolbar{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:8px}.aa-muted{color:#6a7871}.aa-small{font-size:11px}.aa-table-wrap{overflow:auto}
   .aa-table{width:100%;border-collapse:collapse}.aa-table th,.aa-table td{border:1px solid #dde4e0;padding:5px 6px;white-space:nowrap;background:#fff}.aa-table th{position:sticky;top:0;background:#f4f7f5;z-index:2;text-align:left}.aa-table .student{position:sticky;left:0;z-index:1}.aa-table th.student{z-index:3}
   .aa-score{cursor:pointer;text-decoration:underline dotted}.aa-card{border:1px solid #dde4e0;background:#fafcfb;border-radius:9px;padding:9px;margin-bottom:8px}.aa-card h3{margin:0 0 7px;font-size:14px}.aa-area{width:100%;min-height:170px;font-family:ui-monospace,Consolas,monospace}
-  .aa-mini{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:6px;align-items:center;padding:6px 2px;border-bottom:1px solid #edf1ef}.aa-mini-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.aa-empty{text-align:center;color:#6a7871;padding:25px}
-  `);
+  .aa-mini{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:6px;align-items:center;padding:6px 2px;border-bottom:1px solid #edf1ef}.aa-mini-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.aa-empty{text-align:center;color:#6a7871;padding:25px}\n  .aa-modal-overlay{position:fixed;inset:0;z-index:2147483647;background:#0007;display:flex;align-items:center;justify-content:center;padding:18px}\n  .aa-modal{width:min(920px,96vw);max-height:90vh;display:flex;flex-direction:column;background:#fff;color:#172026;border:1px solid #87958f;border-radius:10px;box-shadow:0 18px 60px #0006;overflow:hidden}\n  .aa-modal-head{padding:10px 12px;font-weight:800;border-bottom:1px solid #dde4e0;background:#f5f8f6}.aa-modal-body{padding:10px 12px;overflow:auto}.aa-modal-foot{padding:9px 12px;display:flex;justify-content:flex-end;gap:6px;border-top:1px solid #dde4e0;background:#fafcfb}\n  .aa-import-table td,.aa-import-table th{white-space:normal}.aa-row-disabled{opacity:.48}.aa-result-input{width:85px}\n  `);
 
   let open=IS_ABITTI,compact=!IS_ABITTI,root=null;
   function btn(t,fn,cls=""){const b=document.createElement("button");b.type="button";b.className="aa-btn "+cls;b.textContent=t;b.onclick=fn;return b}
@@ -402,7 +483,7 @@
     const h=document.createElement("div");h.className="aa-head";const title=document.createElement("div");title.className="aa-title";title.textContent="ArviointiApina BETA";h.appendChild(title);
     const s=document.createElement("select");s.className="aa-select";for(const c of Object.values(db.courses).sort((a,b)=>a.name.localeCompare(b.name,"fi"))){const o=document.createElement("option");o.value=c.id;o.textContent=c.name;o.selected=c.id===db.settings.activeCourseId;s.appendChild(o)}s.onchange=()=>{db.settings.activeCourseId=s.value;save();render()};h.appendChild(s);
     h.appendChild(btn("+ Course",()=>{const n=prompt("Course/class name:");if(n?.trim()){createCourse(n);render()}}));
-    if(IS_ABITTI)h.appendChild(btn("Import Abitti",importDialog,"primary"));
+    if(IS_ABITTI)h.appendChild(btn("Import OmaAbitti",importDialog,"primary"));
     h.appendChild(btn(compact?"Full":"Compact",()=>{compact=!compact;render()}));h.appendChild(btn("×",()=>{open=false;render()}));p.appendChild(h);
   }
 
@@ -427,12 +508,80 @@
   function editResult(c,s,a){const current=a.results?.[s.id]?.points??"",v=prompt(s.canonicalName+"\n"+a.name+"\n\nPoints (blank removes result):",current);if(v===null)return;if(!v.trim())delete a.results[s.id];else{const p=num(v);if(!Number.isFinite(p))return alert("Invalid score.");a.results[s.id]={...(a.results[s.id]||{}),points:p,editedAt:now()}}save();render()}
   function editWeights(c,s){const as=Object.values(c.assessments),lines=as.map((a,i)=>(i+1)+". "+a.name+": "+weightFor(s,a)+"%"+(Object.prototype.hasOwnProperty.call(s.weightingOverrides||{},a.id)?" [override]":"")),choice=prompt(s.canonicalName+"\n\nSelect assessment number.\nType RESET to clear all overrides.\n\n"+lines.join("\n"));if(choice===null)return;if(choice.trim().toUpperCase()==="RESET"){s.weightingOverrides={};save();return render()}const i=Number(choice)-1;if(!Number.isInteger(i)||i<0||i>=as.length)return alert("Invalid assessment.");const a=as[i],old=Object.prototype.hasOwnProperty.call(s.weightingOverrides||{},a.id)?s.weightingOverrides[a.id]:"",v=prompt("Individual weight for "+a.name+".\n0 = exclude. Blank = course default.",old);if(v===null)return;s.weightingOverrides||={};if(!v.trim())delete s.weightingOverrides[a.id];else{const w=num(v);if(!(w>=0))return alert("Invalid weight.");s.weightingOverrides[a.id]=w}save();render()}
 
+
+  function manageAssessmentStudents(c,a){
+    const overlay=document.createElement("div");overlay.className="aa-modal-overlay";
+    const modal=document.createElement("div");modal.className="aa-modal";
+    const head=document.createElement("div");head.className="aa-modal-head";head.textContent="Edit students / results · "+a.name;
+    const body=document.createElement("div");body.className="aa-modal-body";
+    const note=document.createElement("div");note.className="aa-muted aa-small";note.textContent="Unchecking a student removes only this exam result. The student remains on the course.";
+    body.appendChild(note);
+    const controls=document.createElement("div");controls.className="aa-toolbar";body.appendChild(controls);
+    const wrap=document.createElement("div");wrap.className="aa-table-wrap";
+    const table=document.createElement("table");table.className="aa-table";table.innerHTML="<thead><tr><th>In exam</th><th>Student</th><th>Email</th><th>Points</th></tr></thead>";
+    const tbody=document.createElement("tbody"),rows=[];
+    for(const st of Object.values(c.students).sort((x,y)=>x.canonicalName.localeCompare(y.canonicalName,"fi"))){
+      const r=a.results?.[st.id],tr=document.createElement("tr");
+      const td0=document.createElement("td"),td1=document.createElement("td"),td2=document.createElement("td"),td3=document.createElement("td");
+      const cb=document.createElement("input");cb.type="checkbox";cb.checked=!!r;td0.appendChild(cb);
+      td1.textContent=st.canonicalName;td2.textContent=st.emails?.[0]||"";
+      const inp=document.createElement("input");inp.className="aa-input aa-result-input";inp.value=r?.points??"";inp.disabled=!cb.checked;inp.placeholder="0-"+a.maxPoints;td3.appendChild(inp);
+      cb.onchange=()=>{inp.disabled=!cb.checked;if(cb.checked&&!inp.value.trim())inp.focus()};
+      tr.append(td0,td1,td2,td3);tbody.appendChild(tr);rows.push({st,cb,inp});
+    }
+    controls.append(btn("Include all",()=>rows.forEach(r=>{r.cb.checked=true;r.inp.disabled=false})),btn("Remove all results",()=>rows.forEach(r=>{r.cb.checked=false;r.inp.disabled=true}),"danger"));
+    table.appendChild(tbody);wrap.appendChild(table);body.appendChild(wrap);
+    const foot=document.createElement("div");foot.className="aa-modal-foot";const close=()=>overlay.remove();
+    foot.append(btn("Cancel",close),btn("Save student list",()=>{
+      const changes=[];
+      for(const r of rows){
+        if(!r.cb.checked){changes.push({st:r.st,include:false});continue}
+        const points=num(r.inp.value);if(!Number.isFinite(points)){alert("Enter valid points for "+r.st.canonicalName+".");r.inp.focus();return}
+        changes.push({st:r.st,include:true,points});
+      }
+      a.results||={};
+      for(const ch of changes){
+        if(!ch.include){delete a.results[ch.st.id];continue}
+        a.results[ch.st.id]={...(a.results[ch.st.id]||{}),points:ch.points,editedAt:now()};
+      }
+      a.updatedAt=now();c.updatedAt=now();save();close();render();
+    },"primary"));
+    modal.append(head,body,foot);overlay.appendChild(modal);document.body.appendChild(overlay);overlay.onclick=ev=>{if(ev.target===overlay)close()};
+  }
+
+
   function assessments(parent,c){
-    const bar=document.createElement("div");bar.className="aa-toolbar";bar.appendChild(btn("+ Manual assessment",()=>{const n=prompt("Assessment name:");if(!n?.trim())return;const m=num(prompt("Maximum points:","100")),w=num(prompt("Weight %:","0"));if(!(m>0)||!(w>=0))return alert("Invalid maximum or weight.");const id=uid("assessment");c.assessments[id]={id,name:n.trim(),maxPoints:m,defaultWeight:w,type:"manual",source:{type:"manual"},results:{},createdAt:now()};save();render()}));if(IS_ABITTI)bar.appendChild(btn("Import current Abitti exam",importDialog,"primary"));parent.appendChild(bar);
-    const table=document.createElement("table");table.className="aa-table";table.innerHTML="<thead><tr><th>Assessment</th><th>Max</th><th>Weight %</th><th>Results</th><th></th></tr></thead>";const body=document.createElement("tbody");let total=0;
-    for(const a of Object.values(c.assessments)){total+=num(a.defaultWeight)||0;const tr=document.createElement("tr"),n=document.createElement("input"),m=document.createElement("input"),w=document.createElement("input");n.className=m.className=w.className="aa-input";n.value=a.name;m.value=a.maxPoints;w.value=a.defaultWeight;m.style.width=w.style.width="70px";n.onchange=()=>{a.name=n.value.trim()||a.name;save();render()};m.onchange=()=>{const x=num(m.value);if(x>0){a.maxPoints=x;save()}render()};w.onchange=()=>{const x=num(w.value);if(x>=0){a.defaultWeight=x;save()}render()};
-      const td1=document.createElement("td"),td2=document.createElement("td"),td3=document.createElement("td"),td4=document.createElement("td"),td5=document.createElement("td");td1.appendChild(n);td2.appendChild(m);td3.appendChild(w);td4.textContent=Object.keys(a.results||{}).length;td5.appendChild(btn("Delete",()=>{if(confirm('Delete "'+a.name+'" and its results?')){delete c.assessments[a.id];for(const s of Object.values(c.students))delete s.weightingOverrides?.[a.id];save();render()}},"danger"));tr.append(td1,td2,td3,td4,td5);body.appendChild(tr)}
-    const tr=document.createElement("tr");tr.innerHTML="<td><strong>Total</strong></td><td></td><td><strong>"+fmt(total,1)+"%</strong></td><td colspan='2'>"+(Math.abs(total-100)<.001?"OK":"Weights are normalized when calculating.")+"</td>";body.appendChild(tr);table.appendChild(body);parent.appendChild(table);
+    const bar=document.createElement("div");bar.className="aa-toolbar";
+    bar.appendChild(btn("+ Manual assessment",()=>{
+      const n=prompt("Assessment name:");if(!n?.trim())return;
+      const m=num(prompt("Maximum points:","100")),w=num(prompt("Weight %:","0"));
+      if(!(m>0)||!(w>=0))return alert("Invalid maximum or weight.");
+      const id=uid("assessment");c.assessments[id]={id,name:n.trim(),maxPoints:m,defaultWeight:w,type:"manual",source:{type:"manual"},results:{},createdAt:now(),updatedAt:now()};save();render();
+    }));
+    if(IS_ABITTI)bar.appendChild(btn("Import current OmaOmaAbitti exam",importDialog,"primary"));
+    parent.appendChild(bar);
+
+    const table=document.createElement("table");table.className="aa-table";table.innerHTML="<thead><tr><th>Assessment</th><th>Max</th><th>Weight %</th><th>Results</th><th></th></tr></thead>";
+    const body=document.createElement("tbody");let total=0;
+
+    for(const a of Object.values(c.assessments)){
+      total+=num(a.defaultWeight)||0;
+      const tr=document.createElement("tr"),n=document.createElement("input"),m=document.createElement("input"),w=document.createElement("input");
+      n.className=m.className=w.className="aa-input";n.value=a.name;m.value=a.maxPoints;w.value=a.defaultWeight;m.style.width=w.style.width="70px";
+      n.onchange=()=>{a.name=n.value.trim()||a.name;a.updatedAt=now();save();render()};
+      m.onchange=()=>{const x=num(m.value);if(x>0){a.maxPoints=x;a.updatedAt=now();save()}render()};
+      w.onchange=()=>{const x=num(w.value);if(x>=0){a.defaultWeight=x;a.updatedAt=now();save()}render()};
+      const td1=document.createElement("td"),td2=document.createElement("td"),td3=document.createElement("td"),td4=document.createElement("td"),td5=document.createElement("td");
+      td1.appendChild(n);td2.appendChild(m);td3.appendChild(w);td4.textContent=Object.keys(a.results||{}).length;
+      td5.append(btn("Edit students",()=>manageAssessmentStudents(c,a)),btn("Delete exam",()=>{
+        if(!confirm('Delete "'+a.name+'" and all its results?'))return;
+        delete c.assessments[a.id];for(const st of Object.values(c.students))delete st.weightingOverrides?.[a.id];c.updatedAt=now();save();render();
+      },"danger"));
+      tr.append(td1,td2,td3,td4,td5);body.appendChild(tr);
+    }
+
+    const tr=document.createElement("tr");tr.innerHTML="<td><strong>Total</strong></td><td></td><td><strong>"+fmt(total,1)+"%</strong></td><td colspan='2'>"+(Math.abs(total-100)<.001?"OK":"Weights are normalized when calculating.")+"</td>";
+    body.appendChild(tr);table.appendChild(body);parent.appendChild(table);
   }
 
   function students(parent,c){
@@ -467,10 +616,31 @@
     function draw(){list.innerHTML="";const needle=norm(q.value);for(const s of Object.values(c.students).filter(s=>!needle||names(s).some(n=>norm(n).includes(needle))).sort((a,b)=>a.canonicalName.localeCompare(b.canonicalName,"fi"))){const x=calc(c,s),r=document.createElement("div");r.className="aa-mini";const n=document.createElement("div");n.className="aa-mini-name";n.textContent=s.canonicalName;const p=document.createElement("div");p.className="aa-muted aa-small";p.textContent=x.pct==null?"":fmt(x.pct,1)+"%";r.append(n,p,btn(x.grade||"—",async()=>{if(x.grade)await navigator.clipboard.writeText(x.grade)}));list.appendChild(r)}}q.oninput=draw;draw();
   }
 
-  function importDialog(){
-    const detected=detectExam();if(!detected?.students.length)return alert("No Abitti results detected.");if(!detected.students.some(s=>s.name&&norm(s.name)!=="unnamed student"))return alert("Student names could not be detected. Import stopped.");
-    let c=course();if(!c){const n=prompt("Create course:",detected.name.split(":")[0].trim());if(!n?.trim())return;c=createCourse(n.trim())}
-    const existing=Object.values(c.assessments).find(a=>a.source?.reviewPath===detected.reviewPath),name=prompt("Assessment name:",existing?.name||detected.name);if(!name?.trim())return;const max=prompt("Maximum possible points:",existing?.maxPoints||"");if(max===null)return;const used=Object.values(c.assessments).reduce((s,a)=>s+(num(a.defaultWeight)||0),0),w=prompt("Assessment weight %:",existing?.defaultWeight??Math.max(0,100-used));if(w===null)return;importExam(c,name.trim(),max,w);
+
+  async function importDialog(){
+    const detected=detectExam();
+    if(!detected?.students.length)return alert("No OmaAbitti results detected.");
+    if(!detected.students.some(st=>st.name&&norm(st.name)!=="unnamed student"))return alert("Student names could not be detected. Import stopped.");
+
+    let c=course();
+    if(!c){
+      const n=prompt("Create course:",detected.name.split(":")[0].trim());
+      if(!n?.trim())return;
+      c=createCourse(n.trim());
+    }
+
+    const existing=Object.values(c.assessments).find(a=>a.source?.reviewPath===detected.reviewPath);
+    const name=prompt("Assessment name:",existing?.name||detected.name);
+    if(!name?.trim())return;
+    const max=prompt("Maximum possible points:",existing?.maxPoints||"");
+    if(max===null)return;
+    const used=Object.values(c.assessments).reduce((sum,a)=>sum+(num(a.defaultWeight)||0),0);
+    const w=prompt("Assessment weight %:",existing?.defaultWeight??Math.max(0,100-used));
+    if(w===null)return;
+
+    const selection=await chooseImportStudents(c,detected);
+    if(!selection)return;
+    importExam(c,name.trim(),max,w,selection.selected,selection.existingOnly);
   }
 
   GM_registerMenuCommand("Open ArviointiApina",()=>{open=true;compact=false;render()});
