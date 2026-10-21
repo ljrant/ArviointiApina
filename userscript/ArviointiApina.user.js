@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ArviointiApina BETA
 // @namespace    https://github.com/ljrant/ArviointiApina
-// @version      0.4.0-beta.2
+// @version      0.5.0-beta.1
 // @description  BETA: OmaAbitti + Google Forms result collector and weighted course gradebook.
 // @match        *://*/*
 // @grant        GM_getValue
@@ -121,6 +121,95 @@
     return clone.textContent.replace(/\s+/g," ").trim();
   }
 
+  function detectMaxPointsFromPage(){
+    const labels=[...document.querySelectorAll("td,th")].filter(el=>{
+      const t=String(el.textContent||"").replace(/\s+/g," ").trim().toLowerCase();
+      return t==="maksimipisteet"||t==="maximum points"||t==="max points";
+    });
+
+    for(const label of labels){
+      const parent=label.parentElement;
+      if(!parent)continue;
+      const siblings=[...parent.children].filter(el=>el!==label);
+      for(const el of siblings){
+        const direct=num(el.matches("input,select,textarea")?el.value:el.textContent);
+        if(Number.isFinite(direct)&&direct>0)return{value:direct,source:"labelled-row"};
+        for(const input of el.querySelectorAll("input,select,textarea")){
+          const v=num(input.value);
+          if(Number.isFinite(v)&&v>0)return{value:v,source:"labelled-row-input"};
+        }
+      }
+    }
+
+    const bodyText=String(document.body?.innerText||"").replace(/\s+/g," ");
+    const match=bodyText.match(/(?:Maksimipisteet|Maximum points|Max points)\s*[:\-]?\s*(\d+(?:[.,]\d+)?)/i);
+    if(match){
+      const v=num(match[1]);
+      if(Number.isFinite(v)&&v>0)return{value:v,source:"labelled-page-text"};
+    }
+    return null;
+  }
+
+  const hasParts=a=>Array.isArray(a?.parts)&&a.parts.length>0;
+
+  function effectiveMax(a){
+    if(hasParts(a)){
+      return a.parts.reduce((sum,p)=>sum+(num(p.maxPoints)||0),0);
+    }
+    return num(a.maxPoints);
+  }
+
+  function effectiveResult(a,studentId){
+    if(!hasParts(a))return a.results?.[studentId]||null;
+    let any=false,total=0,completed=0;
+    for(const p of a.parts){
+      const r=p.results?.[studentId],points=num(r?.points);
+      if(Number.isFinite(points)){any=true;total+=points;completed++}
+    }
+    if(!any)return null;
+    return{points:total,completedParts:completed,totalParts:a.parts.length};
+  }
+
+  function assessmentResultCount(a){
+    if(!hasParts(a))return Object.keys(a.results||{}).length;
+    const ids=new Set();
+    for(const p of a.parts)for(const id of Object.keys(p.results||{}))ids.add(id);
+    return ids.size;
+  }
+
+  function ensureParts(a){
+    if(hasParts(a))return a.parts;
+    const first={
+      id:uid("part"),
+      name:a.name+" — Part 1",
+      maxPoints:num(a.maxPoints)||0,
+      source:a.source?{...a.source}:{type:"legacy"},
+      results:{...(a.results||{})},
+      createdAt:a.createdAt||now(),
+      updatedAt:now()
+    };
+    a.parts=[first];
+    a.results={};
+    a.source={type:"composite"};
+    a.maxPoints=first.maxPoints;
+    return a.parts;
+  }
+
+  function syncCompositeMax(a){
+    if(hasParts(a))a.maxPoints=effectiveMax(a);
+  }
+
+  function findReviewTarget(c,reviewPath){
+    for(const a of Object.values(c.assessments)){
+      if(a.source?.reviewPath===reviewPath)return{assessment:a,part:null};
+      if(hasParts(a)){
+        const part=a.parts.find(p=>p.source?.reviewPath===reviewPath);
+        if(part)return{assessment:a,part};
+      }
+    }
+    return null;
+  }
+
   function detectExam(){
     if(!IS_ABITTI)return null;
     const name=document.querySelector("h1.exam-name")?.textContent?.trim()||document.querySelector(".exam-name")?.textContent?.trim()||document.title||"OmaAbitti exam";
@@ -128,7 +217,8 @@
       const g=row.querySelector(".gradingText");
       return{name:studentNameFromRow(row),email:row.querySelector(".email")?.textContent?.trim()||"",uuid:g?.getAttribute("data-student-uuid")||"",answerPaperId:g?.getAttribute("data-answer-paper-id")||"",points:num(row.querySelector(".totalScore")?.textContent)};
     }).filter(x=>x.name||x.email||x.uuid||Number.isFinite(x.points));
-    return{name,reviewPath:location.pathname,students};
+    const maxInfo=detectMaxPointsFromPage();
+    return{name,reviewPath:location.pathname,students,maxPoints:maxInfo?.value??null,maxSource:maxInfo?.source||null};
   }
 
   function confirmMatch(incoming,m){
@@ -203,6 +293,24 @@
     });
   }
 
+  function importSelectedIntoResults(c,results,selected,existingOnly,detected){
+    let created=0,matched=0,imported=0,skipped=0,skippedNotOnCourse=0;
+    detected.students.forEach((incoming,index)=>{
+      if(!selected.has(index))return;
+      if(!Number.isFinite(num(incoming.points))){skipped++;return}
+      let m=matchStudent(c,incoming),student=null;
+      if(m&&(!m.confirm||confirmMatch(incoming,m))){student=m.student;matched++}
+      if(!student){
+        if(existingOnly){skippedNotOnCourse++;return}
+        student=createStudent(c,incoming);created++;
+      }
+      attachIdentity(student,incoming);
+      results[student.id]={points:num(incoming.points),answerPaperId:incoming.answerPaperId||null,sourceName:incoming.name||"",sourceEmail:incoming.email||"",sourceAbittiUuid:incoming.uuid||"",importedAt:now()};
+      imported++;
+    });
+    return{created,matched,imported,skipped,skippedNotOnCourse};
+  }
+
   function importExam(c,examName,maxPoints,weight,selectedIndexes=null,existingOnly=false){
     const detected=detectExam();maxPoints=num(maxPoints);weight=num(weight);
     if(!detected?.students.length)return alert("No OmaAbitti results detected.");
@@ -219,25 +327,29 @@
       a=c.assessments[id]={id,name:examName,maxPoints,defaultWeight:weight,type:"exam",source:{type:"omaabitti",reviewPath:detected.reviewPath},results:{},createdAt:now(),updatedAt:now()};
     }
 
-    let created=0,matched=0,imported=0,skipped=0,skippedNotOnCourse=0;
-    detected.students.forEach((incoming,index)=>{
-      if(!selected.has(index))return;
-      if(!Number.isFinite(num(incoming.points))){skipped++;return}
-      let m=matchStudent(c,incoming),student=null;
-      if(m&&(!m.confirm||confirmMatch(incoming,m))){student=m.student;matched++}
-      if(!student){
-        if(existingOnly){skippedNotOnCourse++;return}
-        student=createStudent(c,incoming);created++;
-      }
-      attachIdentity(student,incoming);
-      a.results[student.id]={points:num(incoming.points),answerPaperId:incoming.answerPaperId||null,sourceName:incoming.name||"",sourceEmail:incoming.email||"",sourceAbittiUuid:incoming.uuid||"",importedAt:now()};
-      imported++;
-    });
-
+    const stats=importSelectedIntoResults(c,a.results,selected,existingOnly,detected);
     c.updatedAt=now();save();render();
-    alert("Import complete.\nImported/updated: "+imported+"\nMatched existing students: "+matched+"\nNew students: "+created+"\nSkipped (not on course): "+skippedNotOnCourse+"\nOther skipped: "+skipped);
+    alert("Import complete.\nImported/updated: "+stats.imported+"\nMatched existing students: "+stats.matched+"\nNew students: "+stats.created+"\nSkipped (not on course): "+stats.skippedNotOnCourse+"\nOther skipped: "+stats.skipped);
   }
 
+  function importExamAsPart(c,a,partName,maxPoints,selectedIndexes=null,existingOnly=false){
+    const detected=detectExam();maxPoints=num(maxPoints);
+    if(!detected?.students.length)return alert("No OmaAbitti results detected.");
+    if(!(maxPoints>0))return alert("Enter a valid maximum score.");
+    const selected=new Set(Array.isArray(selectedIndexes)?selectedIndexes:detected.students.map((_,i)=>i));
+    const parts=ensureParts(a);
+    let part=parts.find(p=>p.source?.reviewPath===detected.reviewPath);
+    if(part){
+      if(!confirm('"'+part.name+'" is already part of "'+a.name+'". Update only the selected students?'))return;
+      part.name=partName;part.maxPoints=maxPoints;part.updatedAt=now();
+    }else{
+      part={id:uid("part"),name:partName,maxPoints,source:{type:"omaabitti",reviewPath:detected.reviewPath},results:{},createdAt:now(),updatedAt:now()};
+      parts.push(part);
+    }
+    const stats=importSelectedIntoResults(c,part.results,selected,existingOnly,detected);
+    syncCompositeMax(a);a.updatedAt=now();c.updatedAt=now();save();render();
+    alert("Exam part imported.\nAssessment: "+a.name+"\nPart: "+part.name+"\nCombined max: "+effectiveMax(a)+"\nImported/updated: "+stats.imported+"\nMatched existing students: "+stats.matched+"\nNew students: "+stats.created+"\nSkipped (not on course): "+stats.skippedNotOnCourse);
+  }
 
   function weightFor(s,a){
     if(Object.prototype.hasOwnProperty.call(s.weightingOverrides||{},a.id)){const n=num(s.weightingOverrides[a.id]);return Number.isFinite(n)?Math.max(0,n):0}
@@ -252,7 +364,7 @@
   function calc(c,s){
     let total=0,used=0;
     for(const a of Object.values(c.assessments)){
-      const max=num(a.maxPoints),p=num(a.results?.[s.id]?.points),w=weightFor(s,a),has=Number.isFinite(p)&&Number.isFinite(max)&&max>0;
+      const max=effectiveMax(a),r=effectiveResult(a,s.id),p=num(r?.points),w=weightFor(s,a),has=Number.isFinite(p)&&Number.isFinite(max)&&max>0;
       if(has){total+=(p/max*100)*w;used+=w}else if(c.grading.missingPolicy==="zero")used+=w;
     }
     const pct=used>0?total/used:null;
@@ -267,7 +379,7 @@
     head.push("Weighted %","Final Grade");const lines=[head.map(csvEscape).join(";")];
     for(const s of Object.values(c.students).sort((a,b)=>a.canonicalName.localeCompare(b.canonicalName,"fi"))){
       const r=[s.canonicalName,s.emails?.[0]||""],x=calc(c,s);
-      for(const a of as)r.push(a.results?.[s.id]?.points??"",a.maxPoints,weightFor(s,a));
+      for(const a of as){const ar=effectiveResult(a,s.id);r.push(ar?.points??"",effectiveMax(a),weightFor(s,a));}
       r.push(x.pct==null?"":x.pct.toFixed(2),x.grade);lines.push(r.map(csvEscape).join(";"));
     }
     download(c.name.replace(/[^\w-]+/g,"_")+"_gradebook.csv","\uFEFF"+lines.join("\r\n"),"text/csv;charset=utf-8");
@@ -498,9 +610,9 @@
     const bar=document.createElement("div");bar.className="aa-toolbar";const info=document.createElement("span");info.className="aa-muted aa-small";info.textContent=Object.keys(c.students).length+" students · "+Object.keys(c.assessments).length+" assessments";bar.appendChild(info);if(IS_ABITTI)bar.appendChild(btn("Import current exam",importDialog,"primary"));bar.appendChild(btn("Export CSV",()=>exportCSV(c)));parent.appendChild(bar);
     const ss=Object.values(c.students).sort((a,b)=>a.canonicalName.localeCompare(b.canonicalName,"fi")),as=Object.values(c.assessments);if(!ss.length){const e=document.createElement("div");e.className="aa-empty";e.textContent="No students yet.";return parent.appendChild(e)}
     const wrap=document.createElement("div");wrap.className="aa-table-wrap";const table=document.createElement("table");table.className="aa-table";const thead=document.createElement("thead"),hr=document.createElement("tr");hr.innerHTML='<th class="student">Student</th>';
-    for(const a of as){const th=document.createElement("th");th.innerHTML=esc(a.name)+'<div class="aa-muted aa-small">'+a.defaultWeight+'% · max '+a.maxPoints+"</div>";hr.appendChild(th)}hr.insertAdjacentHTML("beforeend","<th>Weighted</th><th>Grade</th><th></th>");thead.appendChild(hr);table.appendChild(thead);const body=document.createElement("tbody");
+    for(const a of as){const th=document.createElement("th");th.innerHTML=esc(a.name)+'<div class="aa-muted aa-small">'+a.defaultWeight+'% · max '+effectiveMax(a)+(hasParts(a)?" · "+a.parts.length+" parts":"")+"</div>";hr.appendChild(th)}hr.insertAdjacentHTML("beforeend","<th>Weighted</th><th>Grade</th><th></th>");thead.appendChild(hr);table.appendChild(thead);const body=document.createElement("tbody");
     for(const s of ss){const x=calc(c,s),tr=document.createElement("tr"),name=document.createElement("td");name.className="student";name.textContent=s.canonicalName;tr.appendChild(name);
-      for(const a of as){const td=document.createElement("td"),r=a.results?.[s.id],sp=document.createElement("span");sp.className="aa-score";sp.textContent=r?fmt(num(r.points),2)+"/"+fmt(num(a.maxPoints),2):"—";sp.onclick=()=>editResult(c,s,a);td.appendChild(sp);if(Object.prototype.hasOwnProperty.call(s.weightingOverrides||{},a.id)){const b=document.createElement("span");b.className="aa-muted aa-small";b.textContent="  "+weightFor(s,a)+"%";td.appendChild(b)}tr.appendChild(td)}
+      for(const a of as){const td=document.createElement("td"),r=effectiveResult(a,s.id),sp=document.createElement("span");sp.className="aa-score";sp.textContent=r?fmt(num(r.points),2)+"/"+fmt(effectiveMax(a),2)+(hasParts(a)?" ("+(r.completedParts||0)+"/"+a.parts.length+" parts)":""):"—";sp.onclick=()=>hasParts(a)?editCompositeStudentResults(c,s,a):editResult(c,s,a);td.appendChild(sp);if(Object.prototype.hasOwnProperty.call(s.weightingOverrides||{},a.id)){const b=document.createElement("span");b.className="aa-muted aa-small";b.textContent="  "+weightFor(s,a)+"%";td.appendChild(b)}tr.appendChild(td)}
       const pct=document.createElement("td");pct.textContent=x.pct==null?"—":fmt(x.pct,1)+"%";tr.appendChild(pct);const gt=document.createElement("td");gt.appendChild(btn(x.grade||"—",async()=>{if(x.grade)await navigator.clipboard.writeText(x.grade)}));tr.appendChild(gt);const act=document.createElement("td");act.appendChild(btn("Weights",()=>editWeights(c,s)));tr.appendChild(act);body.appendChild(tr)}
     table.appendChild(body);wrap.appendChild(table);parent.appendChild(wrap);
   }
@@ -509,7 +621,93 @@
   function editWeights(c,s){const as=Object.values(c.assessments),lines=as.map((a,i)=>(i+1)+". "+a.name+": "+weightFor(s,a)+"%"+(Object.prototype.hasOwnProperty.call(s.weightingOverrides||{},a.id)?" [override]":"")),choice=prompt(s.canonicalName+"\n\nSelect assessment number.\nType RESET to clear all overrides.\n\n"+lines.join("\n"));if(choice===null)return;if(choice.trim().toUpperCase()==="RESET"){s.weightingOverrides={};save();return render()}const i=Number(choice)-1;if(!Number.isInteger(i)||i<0||i>=as.length)return alert("Invalid assessment.");const a=as[i],old=Object.prototype.hasOwnProperty.call(s.weightingOverrides||{},a.id)?s.weightingOverrides[a.id]:"",v=prompt("Individual weight for "+a.name+".\n0 = exclude. Blank = course default.",old);if(v===null)return;s.weightingOverrides||={};if(!v.trim())delete s.weightingOverrides[a.id];else{const w=num(v);if(!(w>=0))return alert("Invalid weight.");s.weightingOverrides[a.id]=w}save();render()}
 
 
+  function editCompositeStudentResults(c,st,a){
+    const parts=ensureParts(a);
+    const lines=parts.map((p,i)=>{
+      const value=p.results?.[st.id]?.points;
+      return (i+1)+". "+p.name+": "+(value??"—")+" / "+p.maxPoints;
+    });
+    const choice=prompt(st.canonicalName+"\n"+a.name+"\n\nChoose part number to edit:\n\n"+lines.join("\n"));
+    if(choice===null)return;
+    const i=Number(choice)-1;
+    if(!Number.isInteger(i)||i<0||i>=parts.length)return alert("Invalid part.");
+    const p=parts[i],current=p.results?.[st.id]?.points??"";
+    const v=prompt(p.name+"\nPoints (blank removes this part result):",current);
+    if(v===null)return;
+    p.results||={};
+    if(!v.trim())delete p.results[st.id];
+    else{
+      const points=num(v);if(!Number.isFinite(points))return alert("Invalid score.");
+      p.results[st.id]={...(p.results[st.id]||{}),points,editedAt:now()};
+    }
+    p.updatedAt=now();a.updatedAt=now();c.updatedAt=now();save();render();
+  }
+
+  function manageCompositeStudents(c,a){
+    const parts=ensureParts(a);
+    const overlay=document.createElement("div");overlay.className="aa-modal-overlay";
+    const modal=document.createElement("div");modal.className="aa-modal";
+    const head=document.createElement("div");head.className="aa-modal-head";head.textContent="Edit students / part results · "+a.name;
+    const body=document.createElement("div");body.className="aa-modal-body";
+    const wrap=document.createElement("div");wrap.className="aa-table-wrap";
+    const table=document.createElement("table");table.className="aa-table";
+    const thead=document.createElement("thead"),hr=document.createElement("tr");hr.innerHTML="<th>Student</th>";
+    for(const p of parts){const th=document.createElement("th");th.textContent=p.name+" / "+p.maxPoints;hr.appendChild(th)}
+    thead.appendChild(hr);table.appendChild(thead);
+    const tbody=document.createElement("tbody"),rows=[];
+    for(const st of Object.values(c.students).sort((x,y)=>x.canonicalName.localeCompare(y.canonicalName,"fi"))){
+      const tr=document.createElement("tr"),name=document.createElement("td");name.textContent=st.canonicalName;tr.appendChild(name);
+      const inputs=[];
+      for(const p of parts){
+        const td=document.createElement("td"),inp=document.createElement("input");inp.className="aa-input aa-result-input";inp.value=p.results?.[st.id]?.points??"";inp.placeholder="blank = no result";td.appendChild(inp);tr.appendChild(td);inputs.push({p,inp});
+      }
+      tbody.appendChild(tr);rows.push({st,inputs});
+    }
+    table.appendChild(tbody);wrap.appendChild(table);body.appendChild(wrap);
+    const foot=document.createElement("div");foot.className="aa-modal-foot";const close=()=>overlay.remove();
+    foot.append(btn("Cancel",close),btn("Save results",()=>{
+      for(const row of rows){
+        for(const item of row.inputs){
+          const raw=item.inp.value.trim();item.p.results||={};
+          if(!raw){delete item.p.results[row.st.id];continue}
+          const points=num(raw);if(!Number.isFinite(points)){alert("Invalid points for "+row.st.canonicalName+" / "+item.p.name);item.inp.focus();return}
+          item.p.results[row.st.id]={...(item.p.results[row.st.id]||{}),points,editedAt:now()};
+        }
+      }
+      for(const p of parts)p.updatedAt=now();a.updatedAt=now();c.updatedAt=now();save();close();render();
+    },"primary"));
+    modal.append(head,body,foot);overlay.appendChild(modal);document.body.appendChild(overlay);overlay.onclick=ev=>{if(ev.target===overlay)close()};
+  }
+
+  function manageAssessmentParts(c,a){
+    const parts=ensureParts(a);
+    const overlay=document.createElement("div");overlay.className="aa-modal-overlay";
+    const modal=document.createElement("div");modal.className="aa-modal";
+    const head=document.createElement("div");head.className="aa-modal-head";head.textContent="Exam parts · "+a.name;
+    const body=document.createElement("div");body.className="aa-modal-body";
+    const note=document.createElement("div");note.className="aa-muted aa-small";note.textContent="Each part maximum is editable. The assessment maximum is their sum.";body.appendChild(note);
+    const table=document.createElement("table");table.className="aa-table";table.innerHTML="<thead><tr><th>Part</th><th>Max</th><th>Results</th><th>Source</th><th></th></tr></thead>";
+    const tbody=document.createElement("tbody");
+    for(const p of parts){
+      const tr=document.createElement("tr"),td1=document.createElement("td"),td2=document.createElement("td"),td3=document.createElement("td"),td4=document.createElement("td"),td5=document.createElement("td");
+      const n=document.createElement("input");n.className="aa-input";n.value=p.name;n.onchange=()=>{if(n.value.trim())p.name=n.value.trim()};
+      const m=document.createElement("input");m.className="aa-input aa-result-input";m.value=p.maxPoints;
+      m.onchange=()=>{const v=num(m.value);if(v>0)p.maxPoints=v;else{alert("Invalid maximum.");m.value=p.maxPoints}syncCompositeMax(a);save();render()};
+      td1.appendChild(n);td2.appendChild(m);td3.textContent=Object.keys(p.results||{}).length;td4.textContent=p.source?.reviewPath||p.source?.type||"";
+      td5.appendChild(btn("Delete part",()=>{
+        if(!confirm('Delete part "'+p.name+'" and all its results?'))return;
+        a.parts=a.parts.filter(x=>x.id!==p.id);syncCompositeMax(a);a.updatedAt=now();c.updatedAt=now();save();overlay.remove();render();
+      },"danger"));
+      tr.append(td1,td2,td3,td4,td5);tbody.appendChild(tr);
+    }
+    table.appendChild(tbody);body.appendChild(table);
+    const foot=document.createElement("div");foot.className="aa-modal-foot";const close=()=>overlay.remove();
+    foot.append(btn("Close",()=>{for(const p of a.parts||[])p.updatedAt=now();syncCompositeMax(a);a.updatedAt=now();save();close();render()}));
+    modal.append(head,body,foot);overlay.appendChild(modal);document.body.appendChild(overlay);overlay.onclick=ev=>{if(ev.target===overlay)close()};
+  }
+
   function manageAssessmentStudents(c,a){
+    if(hasParts(a))return manageCompositeStudents(c,a);
     const overlay=document.createElement("div");overlay.className="aa-modal-overlay";
     const modal=document.createElement("div");modal.className="aa-modal";
     const head=document.createElement("div");head.className="aa-modal-head";head.textContent="Edit students / results · "+a.name;
@@ -558,7 +756,7 @@
       if(!(m>0)||!(w>=0))return alert("Invalid maximum or weight.");
       const id=uid("assessment");c.assessments[id]={id,name:n.trim(),maxPoints:m,defaultWeight:w,type:"manual",source:{type:"manual"},results:{},createdAt:now(),updatedAt:now()};save();render();
     }));
-    if(IS_ABITTI)bar.appendChild(btn("Import current OmaOmaAbitti exam",importDialog,"primary"));
+    if(IS_ABITTI)bar.appendChild(btn("Import current OmaAbitti exam",importDialog,"primary"));
     parent.appendChild(bar);
 
     const table=document.createElement("table");table.className="aa-table";table.innerHTML="<thead><tr><th>Assessment</th><th>Max</th><th>Weight %</th><th>Results</th><th></th></tr></thead>";
@@ -567,12 +765,13 @@
     for(const a of Object.values(c.assessments)){
       total+=num(a.defaultWeight)||0;
       const tr=document.createElement("tr"),n=document.createElement("input"),m=document.createElement("input"),w=document.createElement("input");
-      n.className=m.className=w.className="aa-input";n.value=a.name;m.value=a.maxPoints;w.value=a.defaultWeight;m.style.width=w.style.width="70px";
+      n.className=m.className=w.className="aa-input";n.value=a.name;m.value=effectiveMax(a);w.value=a.defaultWeight;m.style.width=w.style.width="70px";if(hasParts(a)){m.readOnly=true;m.title="Combined maximum = sum of part maxima. Edit the parts instead."}
       n.onchange=()=>{a.name=n.value.trim()||a.name;a.updatedAt=now();save();render()};
-      m.onchange=()=>{const x=num(m.value);if(x>0){a.maxPoints=x;a.updatedAt=now();save()}render()};
+      m.onchange=()=>{if(hasParts(a))return render();const x=num(m.value);if(x>0){a.maxPoints=x;a.updatedAt=now();save()}render()};
       w.onchange=()=>{const x=num(w.value);if(x>=0){a.defaultWeight=x;a.updatedAt=now();save()}render()};
       const td1=document.createElement("td"),td2=document.createElement("td"),td3=document.createElement("td"),td4=document.createElement("td"),td5=document.createElement("td");
-      td1.appendChild(n);td2.appendChild(m);td3.appendChild(w);td4.textContent=Object.keys(a.results||{}).length;
+      td1.appendChild(n);td2.appendChild(m);td3.appendChild(w);td4.textContent=assessmentResultCount(a);
+      if(hasParts(a))td5.appendChild(btn("Parts ("+a.parts.length+")",()=>manageAssessmentParts(c,a)));
       td5.append(btn("Edit students",()=>manageAssessmentStudents(c,a)),btn("Delete exam",()=>{
         if(!confirm('Delete "'+a.name+'" and all its results?'))return;
         delete c.assessments[a.id];for(const st of Object.values(c.students))delete st.weightingOverrides?.[a.id];c.updatedAt=now();save();render();
@@ -587,7 +786,7 @@
   function students(parent,c){
     const bar=document.createElement("div");bar.className="aa-toolbar";bar.appendChild(btn("+ Student",()=>{const n=prompt("Student name:");if(n?.trim()){createStudent(c,{name:n,email:"",uuid:""});save();render()}}));parent.appendChild(bar);
     const table=document.createElement("table");table.className="aa-table";table.innerHTML="<thead><tr><th>Student</th><th>Email</th><th>Aliases</th><th>Abitti IDs seen</th><th></th></tr></thead>";const body=document.createElement("tbody");
-    for(const s of Object.values(c.students).sort((a,b)=>a.canonicalName.localeCompare(b.canonicalName,"fi"))){const tr=document.createElement("tr");tr.innerHTML="<td>"+esc(s.canonicalName)+"</td><td>"+esc((s.emails||[]).join(", "))+"</td><td>"+esc((s.aliases||[]).join(", "))+"</td><td>"+(s.abittiUuids||[]).length+"</td>";const td=document.createElement("td");td.appendChild(btn("Edit",()=>{const n=prompt("Canonical student name:",s.canonicalName);if(n?.trim()){if(norm(n)!==norm(s.canonicalName)&&norm(s.canonicalName)!=="unnamed student"){s.aliases||=[];s.aliases.push(s.canonicalName)}s.canonicalName=n.trim()}const a=prompt("Aliases separated by |",(s.aliases||[]).join(" | "));if(a!==null)s.aliases=a.split("|").map(x=>x.trim()).filter(Boolean);save();render()}));td.appendChild(btn("Delete",()=>{if(confirm("Delete "+s.canonicalName+" and all their results?")){delete c.students[s.id];for(const a of Object.values(c.assessments))delete a.results[s.id];save();render()}},"danger"));tr.appendChild(td);body.appendChild(tr)}table.appendChild(body);parent.appendChild(table);
+    for(const s of Object.values(c.students).sort((a,b)=>a.canonicalName.localeCompare(b.canonicalName,"fi"))){const tr=document.createElement("tr");tr.innerHTML="<td>"+esc(s.canonicalName)+"</td><td>"+esc((s.emails||[]).join(", "))+"</td><td>"+esc((s.aliases||[]).join(", "))+"</td><td>"+(s.abittiUuids||[]).length+"</td>";const td=document.createElement("td");td.appendChild(btn("Edit",()=>{const n=prompt("Canonical student name:",s.canonicalName);if(n?.trim()){if(norm(n)!==norm(s.canonicalName)&&norm(s.canonicalName)!=="unnamed student"){s.aliases||=[];s.aliases.push(s.canonicalName)}s.canonicalName=n.trim()}const a=prompt("Aliases separated by |",(s.aliases||[]).join(" | "));if(a!==null)s.aliases=a.split("|").map(x=>x.trim()).filter(Boolean);save();render()}));td.appendChild(btn("Delete",()=>{if(confirm("Delete "+s.canonicalName+" and all their results?")){delete c.students[s.id];for(const a of Object.values(c.assessments)){delete a.results?.[s.id];for(const p of a.parts||[])delete p.results?.[s.id]}save();render()}},"danger"));tr.appendChild(td);body.appendChild(tr)}table.appendChild(body);parent.appendChild(table);
   }
 
   function data(parent,c){
@@ -629,17 +828,54 @@
       c=createCourse(n.trim());
     }
 
-    const existing=Object.values(c.assessments).find(a=>a.source?.reviewPath===detected.reviewPath);
-    const name=prompt("Assessment name:",existing?.name||detected.name);
-    if(!name?.trim())return;
-    const max=prompt("Maximum possible points:",existing?.maxPoints||"");
-    if(max===null)return;
-    const used=Object.values(c.assessments).reduce((sum,a)=>sum+(num(a.defaultWeight)||0),0);
-    const w=prompt("Assessment weight %:",existing?.defaultWeight??Math.max(0,100-used));
-    if(w===null)return;
+    const existingTarget=findReviewTarget(c,detected.reviewPath);
+    if(existingTarget?.part){
+      const part=existingTarget.part,a=existingTarget.assessment;
+      const partName=prompt("Exam part name:",part.name);if(!partName?.trim())return;
+      const max=prompt("Maximum possible points (auto-detected when available):",part.maxPoints||detected.maxPoints||"");if(max===null)return;
+      const selection=await chooseImportStudents(c,detected);if(!selection)return;
+      return importExamAsPart(c,a,partName.trim(),max,selection.selected,selection.existingOnly);
+    }
 
-    const selection=await chooseImportStudents(c,detected);
-    if(!selection)return;
+    if(existingTarget?.assessment&&!hasParts(existingTarget.assessment)){
+      const a=existingTarget.assessment;
+      const name=prompt("Assessment name:",a.name);if(!name?.trim())return;
+      const max=prompt("Maximum possible points (auto-detected when available):",a.maxPoints||detected.maxPoints||"");if(max===null)return;
+      const w=prompt("Assessment weight %:",a.defaultWeight??0);if(w===null)return;
+      const selection=await chooseImportStudents(c,detected);if(!selection)return;
+      return importExam(c,name.trim(),max,w,selection.selected,selection.existingOnly);
+    }
+
+    const assessments=Object.values(c.assessments);
+    let target=null;
+    if(assessments.length){
+      const lines=assessments.map((a,i)=>(i+1)+". "+a.name+(hasParts(a)?" ("+a.parts.length+" parts)":""));
+      const choice=prompt(
+        "How should this OmaAbitti exam be added?\n\n"+
+        "Type NEW for a new course assessment, or choose an existing assessment number to add it as another exam part.\n\n"+
+        lines.join("\n"),
+        "NEW"
+      );
+      if(choice===null)return;
+      if(choice.trim().toUpperCase()!=="NEW"){
+        const i=Number(choice)-1;
+        if(!Number.isInteger(i)||i<0||i>=assessments.length)return alert("Invalid assessment selection.");
+        target=assessments[i];
+      }
+    }
+
+    if(target){
+      const partName=prompt("Exam part name:",detected.name);if(!partName?.trim())return;
+      const max=prompt("Maximum possible points (auto-detected when available):",detected.maxPoints||"");if(max===null)return;
+      const selection=await chooseImportStudents(c,detected);if(!selection)return;
+      return importExamAsPart(c,target,partName.trim(),max,selection.selected,selection.existingOnly);
+    }
+
+    const name=prompt("Assessment name:",detected.name);if(!name?.trim())return;
+    const max=prompt("Maximum possible points (auto-detected when available):",detected.maxPoints||"");if(max===null)return;
+    const used=Object.values(c.assessments).reduce((sum,a)=>sum+(num(a.defaultWeight)||0),0);
+    const w=prompt("Assessment weight %:",Math.max(0,100-used));if(w===null)return;
+    const selection=await chooseImportStudents(c,detected);if(!selection)return;
     importExam(c,name.trim(),max,w,selection.selected,selection.existingOnly);
   }
 
