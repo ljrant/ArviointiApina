@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ArviointiApina BETA
 // @namespace    https://github.com/ljrant/ArviointiApina
-// @version      0.5.0-beta.2
+// @version      0.5.0-beta.3
 // @description  BETA: OmaAbitti + Google Forms result collector and weighted course gradebook.
 // @match        *://*/*
 // @grant        GM_getValue
@@ -155,38 +155,39 @@
   function parseAnswerPaperMax(doc){
     if(!doc)return null;
 
-    // Preferred source: OmaAbitti's rendered exam total on an individual answer paper.
-    // Example observed in the live DOM: "Yhteensä 44 p."
-    const totalNodes=[...doc.querySelectorAll("td,th,div,span,strong")];
-    for(const el of totalNodes){
-      const text=String(el.textContent||"").replace(/\s+/g," ").trim();
-      const m=text.match(/^(?:Yhteensä|Total)\s*[:\-]?\s*(\d+(?:[.,]\d+)?)\s*p\.?$/i);
-      if(m){
-        const value=num(m[1]);
-        if(Number.isFinite(value)&&value>0)return{value,source:"omaabitti-answer-total"};
-      }
-    }
-
-    // Slightly looser fallback for the total container.
-    const bodyText=String(doc.body?.innerText||"").replace(/\s+/g," ");
-    const totalMatch=bodyText.match(/(?:Yhteensä|Total)\s*[:\-]?\s*(\d+(?:[.,]\d+)?)\s*p\.?/i);
-    if(totalMatch){
-      const value=num(totalMatch[1]);
-      if(Number.isFinite(value)&&value>0)return{value,source:"omaabitti-answer-total-text"};
-    }
-
-    // Final independent fallback: sum the denominator of each primary score counter.
-    // We use only .e-result-scorecount.e-float-right so the nested border/wrapper
-    // copies are not counted twice.
+    // IMPORTANT:
+    // "Yhteensä 44 p." on an individual answer paper is the student's earned
+    // total, not the exam's maximum. Never use that value as max points.
+    //
+    // The maximum is instead calculated from the denominators of OmaAbitti's
+    // per-answer score counters, e.g. "0 / 3 p.", "2 / 2 p.", "1 / 1 p.".
+    // Only the primary .e-result-scorecount.e-float-right elements are used
+    // so wrapper copies are not counted twice.
     let sum=0,count=0;
+    const maxima=[];
+
     for(const el of doc.querySelectorAll(".e-result-scorecount.e-float-right")){
       const text=String(el.textContent||"").replace(/\s+/g," ").trim();
       const m=text.match(/\/\s*(\d+(?:[.,]\d+)?)\s*p\.?/i);
       if(!m)continue;
+
       const max=num(m[1]);
-      if(Number.isFinite(max)&&max>=0){sum+=max;count++}
+      if(!Number.isFinite(max)||max<0)continue;
+
+      maxima.push(max);
+      sum+=max;
+      count++;
     }
-    if(count>0&&sum>0)return{value:sum,source:"omaabitti-answer-score-sum",items:count};
+
+    if(count>0&&sum>0){
+      return{
+        value:sum,
+        source:"omaabitti-answer-denominator-sum",
+        items:count,
+        maxima
+      };
+    }
+
     return null;
   }
 
@@ -926,7 +927,7 @@
     if(existingTarget?.part){
       const part=existingTarget.part,a=existingTarget.assessment;
       const partName=prompt("Exam part name:",part.name);if(!partName?.trim())return;
-      const max=prompt((detected.maxPoints?"Maximum possible points (calculated from OmaAbitti answer paper):":"Maximum possible points (automatic calculation failed; enter manually):"),part.maxPoints||detected.maxPoints||"");if(max===null)return;
+      const max=prompt((detected.maxPoints?"Maximum possible points (calculated from question maxima):":"Maximum possible points (automatic calculation failed; enter manually):"),part.maxPoints||detected.maxPoints||"");if(max===null)return;
       const selection=await chooseImportStudents(c,detected);if(!selection)return;
       return importExamAsPart(c,a,partName.trim(),max,selection.selected,selection.existingOnly);
     }
