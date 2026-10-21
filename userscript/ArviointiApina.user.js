@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ArviointiApina BETA
 // @namespace    https://github.com/ljrant/ArviointiApina
-// @version      0.5.0-beta.1
+// @version      0.5.0-beta.2
 // @description  BETA: OmaAbitti + Google Forms result collector and weighted course gradebook.
 // @match        *://*/*
 // @grant        GM_getValue
@@ -10,6 +10,7 @@
 // @grant        GM_addStyle
 // @grant        GM_registerMenuCommand
 // @run-at       document-idle
+// @noframes
 // @homepageURL  https://ljrant.github.io/ArviointiApina/
 // @supportURL   https://github.com/ljrant/ArviointiApina/issues
 // @downloadURL  https://raw.githubusercontent.com/ljrant/ArviointiApina/beta/userscript/ArviointiApina.user.js
@@ -150,6 +151,94 @@
     return null;
   }
 
+
+  function parseAnswerPaperMax(doc){
+    if(!doc)return null;
+
+    // Preferred source: OmaAbitti's rendered exam total on an individual answer paper.
+    // Example observed in the live DOM: "Yhteensä 44 p."
+    const totalNodes=[...doc.querySelectorAll("td,th,div,span,strong")];
+    for(const el of totalNodes){
+      const text=String(el.textContent||"").replace(/\s+/g," ").trim();
+      const m=text.match(/^(?:Yhteensä|Total)\s*[:\-]?\s*(\d+(?:[.,]\d+)?)\s*p\.?$/i);
+      if(m){
+        const value=num(m[1]);
+        if(Number.isFinite(value)&&value>0)return{value,source:"omaabitti-answer-total"};
+      }
+    }
+
+    // Slightly looser fallback for the total container.
+    const bodyText=String(doc.body?.innerText||"").replace(/\s+/g," ");
+    const totalMatch=bodyText.match(/(?:Yhteensä|Total)\s*[:\-]?\s*(\d+(?:[.,]\d+)?)\s*p\.?/i);
+    if(totalMatch){
+      const value=num(totalMatch[1]);
+      if(Number.isFinite(value)&&value>0)return{value,source:"omaabitti-answer-total-text"};
+    }
+
+    // Final independent fallback: sum the denominator of each primary score counter.
+    // We use only .e-result-scorecount.e-float-right so the nested border/wrapper
+    // copies are not counted twice.
+    let sum=0,count=0;
+    for(const el of doc.querySelectorAll(".e-result-scorecount.e-float-right")){
+      const text=String(el.textContent||"").replace(/\s+/g," ").trim();
+      const m=text.match(/\/\s*(\d+(?:[.,]\d+)?)\s*p\.?/i);
+      if(!m)continue;
+      const max=num(m[1]);
+      if(Number.isFinite(max)&&max>=0){sum+=max;count++}
+    }
+    if(count>0&&sum>0)return{value:sum,source:"omaabitti-answer-score-sum",items:count};
+    return null;
+  }
+
+  function detectMaxPointsFromAnswerPaper(detected){
+    return new Promise(resolve=>{
+      const href=detected?.answerURL;
+      if(!href)return resolve(null);
+
+      const iframe=document.createElement("iframe");
+      iframe.setAttribute("aria-hidden","true");
+      iframe.tabIndex=-1;
+      iframe.style.cssText="position:fixed!important;width:1px!important;height:1px!important;left:-99999px!important;top:-99999px!important;opacity:0!important;pointer-events:none!important;border:0!important;";
+      let done=false,timer=null,timeout=null;
+
+      const finish=value=>{
+        if(done)return;
+        done=true;
+        if(timer)clearInterval(timer);
+        if(timeout)clearTimeout(timeout);
+        iframe.remove();
+        resolve(value);
+      };
+
+      const inspect=()=>{
+        try{
+          const doc=iframe.contentDocument;
+          if(!doc)return;
+          const found=parseAnswerPaperMax(doc);
+          if(found)finish(found);
+        }catch(_){}
+      };
+
+      iframe.addEventListener("load",inspect);
+      document.body.appendChild(iframe);
+      iframe.src=href;
+
+      timer=setInterval(inspect,250);
+      timeout=setTimeout(()=>finish(null),15000);
+    });
+  }
+
+  async function resolveDetectedMaxPoints(detected){
+    // Do not depend on AbixApuri's injected summary-row value.
+    // Calculate from a real rendered OmaAbitti answer paper first.
+    const answer=await detectMaxPointsFromAnswerPaper(detected);
+    if(answer)return answer;
+
+    // Fallback only if the page itself exposes a labelled value.
+    const local=detectMaxPointsFromPage();
+    return local||null;
+  }
+
   const hasParts=a=>Array.isArray(a?.parts)&&a.parts.length>0;
 
   function effectiveMax(a){
@@ -217,8 +306,9 @@
       const g=row.querySelector(".gradingText");
       return{name:studentNameFromRow(row),email:row.querySelector(".email")?.textContent?.trim()||"",uuid:g?.getAttribute("data-student-uuid")||"",answerPaperId:g?.getAttribute("data-answer-paper-id")||"",points:num(row.querySelector(".totalScore")?.textContent)};
     }).filter(x=>x.name||x.email||x.uuid||Number.isFinite(x.points));
-    const maxInfo=detectMaxPointsFromPage();
-    return{name,reviewPath:location.pathname,students,maxPoints:maxInfo?.value??null,maxSource:maxInfo?.source||null};
+    const firstAnswer=document.querySelector("#scoreTable .answerPaperLink");
+    const answerURL=firstAnswer?.href||firstAnswer?.getAttribute("href")||"";
+    return{name,reviewPath:location.pathname,students,answerURL,maxPoints:null,maxSource:null};
   }
 
   function confirmMatch(incoming,m){
@@ -828,11 +918,15 @@
       c=createCourse(n.trim());
     }
 
+    const maxInfo=await resolveDetectedMaxPoints(detected);
+    detected.maxPoints=maxInfo?.value??null;
+    detected.maxSource=maxInfo?.source||null;
+
     const existingTarget=findReviewTarget(c,detected.reviewPath);
     if(existingTarget?.part){
       const part=existingTarget.part,a=existingTarget.assessment;
       const partName=prompt("Exam part name:",part.name);if(!partName?.trim())return;
-      const max=prompt("Maximum possible points (auto-detected when available):",part.maxPoints||detected.maxPoints||"");if(max===null)return;
+      const max=prompt((detected.maxPoints?"Maximum possible points (calculated from OmaAbitti answer paper):":"Maximum possible points (automatic calculation failed; enter manually):"),part.maxPoints||detected.maxPoints||"");if(max===null)return;
       const selection=await chooseImportStudents(c,detected);if(!selection)return;
       return importExamAsPart(c,a,partName.trim(),max,selection.selected,selection.existingOnly);
     }
@@ -840,7 +934,7 @@
     if(existingTarget?.assessment&&!hasParts(existingTarget.assessment)){
       const a=existingTarget.assessment;
       const name=prompt("Assessment name:",a.name);if(!name?.trim())return;
-      const max=prompt("Maximum possible points (auto-detected when available):",a.maxPoints||detected.maxPoints||"");if(max===null)return;
+      const max=prompt((detected.maxPoints?"Maximum possible points (calculated from OmaAbitti answer paper):":"Maximum possible points (automatic calculation failed; enter manually):"),a.maxPoints||detected.maxPoints||"");if(max===null)return;
       const w=prompt("Assessment weight %:",a.defaultWeight??0);if(w===null)return;
       const selection=await chooseImportStudents(c,detected);if(!selection)return;
       return importExam(c,name.trim(),max,w,selection.selected,selection.existingOnly);
@@ -866,13 +960,13 @@
 
     if(target){
       const partName=prompt("Exam part name:",detected.name);if(!partName?.trim())return;
-      const max=prompt("Maximum possible points (auto-detected when available):",detected.maxPoints||"");if(max===null)return;
+      const max=prompt((detected.maxPoints?"Maximum possible points (calculated from OmaAbitti answer paper):":"Maximum possible points (automatic calculation failed; enter manually):"),detected.maxPoints||"");if(max===null)return;
       const selection=await chooseImportStudents(c,detected);if(!selection)return;
       return importExamAsPart(c,target,partName.trim(),max,selection.selected,selection.existingOnly);
     }
 
     const name=prompt("Assessment name:",detected.name);if(!name?.trim())return;
-    const max=prompt("Maximum possible points (auto-detected when available):",detected.maxPoints||"");if(max===null)return;
+    const max=prompt((detected.maxPoints?"Maximum possible points (calculated from OmaAbitti answer paper):":"Maximum possible points (automatic calculation failed; enter manually):"),detected.maxPoints||"");if(max===null)return;
     const used=Object.values(c.assessments).reduce((sum,a)=>sum+(num(a.defaultWeight)||0),0);
     const w=prompt("Assessment weight %:",Math.max(0,100-used));if(w===null)return;
     const selection=await chooseImportStudents(c,detected);if(!selection)return;
