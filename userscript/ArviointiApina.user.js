@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ArviointiApina BETA
 // @namespace    https://github.com/ljrant/ArviointiApina
-// @version      0.5.0-beta.5
+// @version      0.5.0-beta.6
 // @description  BETA: OmaAbitti + Google Forms result collector and weighted course gradebook.
 // @match        *://*/*
 // @grant        GM_getValue
@@ -658,7 +658,7 @@
 
   GM_addStyle(`
   #aa-root,#aa-root *{box-sizing:border-box;font-family:system-ui,-apple-system,Segoe UI,sans-serif}
-  #aa-launch{position:fixed;right:12px;bottom:12px;z-index:2147483646;border:0;border-radius:999px;background:#24362f;color:#fff;padding:11px 14px;font-weight:700;cursor:pointer;box-shadow:0 5px 20px #0003}
+  #aa-launch{position:fixed;right:12px;bottom:12px;z-index:2147483647!important;display:block!important;visibility:visible!important;opacity:1!important;border:0;border-radius:999px;background:#24362f;color:#fff;padding:11px 14px;font-weight:700;cursor:pointer;box-shadow:0 5px 20px #0003}
   #aa-panel{position:fixed;right:10px;top:10px;bottom:10px;width:min(900px,calc(100vw - 20px));z-index:2147483647;background:#fff;color:#172026;border:1px solid #cfd8d4;border-radius:12px;box-shadow:0 18px 50px #0004;display:flex;flex-direction:column;overflow:hidden;font-size:13px}
   #aa-panel.compact{width:340px;top:56px}.aa-head{display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding:9px;border-bottom:1px solid #dde4e0;background:#f5f8f6}.aa-title{font-weight:800;margin-right:auto}
   .aa-btn,.aa-input,.aa-select,.aa-area{border:1px solid #bbc8c2;border-radius:7px;background:#fff;color:#172026;padding:6px 8px;font-size:12px}.aa-btn{cursor:pointer}.aa-btn.primary{background:#275d4e;border-color:#275d4e;color:#fff}.aa-btn.danger{color:#9a2626}
@@ -700,7 +700,14 @@
   function ensureCourse(){if(db.settings.activeCourseId&&db.courses[db.settings.activeCourseId])return;db.settings.activeCourseId=Object.keys(db.courses)[0]||null;save()}
 
   function render(){
-    ensureRoot();ensureCourse();root.querySelector("#aa-panel")?.remove();if(!open)return;
+    ensureRoot();ensureCourse();
+    const launcher=root.querySelector("#aa-launch");
+    if(launcher){
+      launcher.style.display="block";
+      launcher.setAttribute("aria-pressed",open?"true":"false");
+      launcher.textContent=open?"Grades ✓":"Grades";
+    }
+    root.querySelector("#aa-panel")?.remove();if(!open)return;
     const p=document.createElement("div");p.id="aa-panel";p.classList.toggle("compact",compact);root.appendChild(p);header(p);
     if(compact)return compactView(p);
     tabs(p);const content=document.createElement("div");content.className="aa-content";p.appendChild(content);const c=course();if(!c)return noCourse(content);
