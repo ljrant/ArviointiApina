@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ArviointiApina BETA
 // @namespace    https://github.com/ljrant/ArviointiApina
-// @version      0.5.0-beta.7
+// @version      0.6.0-beta.1
 // @description  BETA: OmaAbitti + Google Forms result collector and weighted course gradebook.
 // @match        *://*/*
 // @grant        GM_getValue
@@ -24,6 +24,7 @@
   const FINNISH={"10":90,"9½":85,"9":80,"8½":75,"8":70,"7½":65,"7":60,"6½":55,"6":50,"5½":45,"5":40,"4½":30,"4":0};
   const IB={"7":85,"6":70,"5":55,"4":40,"3":25,"2":10,"1":0};
   const IS_ABITTI=location.hostname==="oma.abitti.fi"&&location.pathname.startsWith("/school/review/");
+  const IS_GRADING_LIST=location.hostname==="oma.abitti.fi"&&/^\/school\/grading\/?$/.test(location.pathname);
   const IS_GOOGLE_FORMS=location.hostname==="docs.google.com"&&location.pathname.includes("/forms/");
   const AUTO=.93,SUGGEST=.80;
   const uid=(p="id")=>p+"_"+Date.now().toString(36)+"_"+Math.random().toString(36).slice(2,8);
@@ -120,6 +121,56 @@
     const source=cell.querySelector(".answerPaperLink")||cell,clone=source.cloneNode(true);
     clone.querySelectorAll("i,svg,img,button").forEach(el=>el.remove());
     return clone.textContent.replace(/\s+/g," ").trim();
+  }
+
+  function detectedExamFromReviewDocument(doc,reviewPath,titleFallback="OmaAbitti exam"){
+    if(!doc)return null;
+    const name=doc.querySelector("h1.exam-name")?.textContent?.trim()||doc.querySelector(".exam-name")?.textContent?.trim()||titleFallback;
+    const students=[...doc.querySelectorAll("#scoreTable tbody tr.student")].map(row=>{
+      const g=row.querySelector(".gradingText");
+      const cell=row.querySelector(".studentName");
+      let studentName="";
+      if(cell){
+        const source=cell.querySelector(".answerPaperLink")||cell,clone=source.cloneNode(true);
+        clone.querySelectorAll("i,svg,img,button").forEach(el=>el.remove());
+        studentName=clone.textContent.replace(/\s+/g," ").trim();
+      }
+      return{
+        name:studentName,
+        email:row.querySelector(".email")?.textContent?.trim()||"",
+        uuid:g?.getAttribute("data-student-uuid")||"",
+        answerPaperId:g?.getAttribute("data-answer-paper-id")||"",
+        points:num(row.querySelector(".totalScore")?.textContent)
+      };
+    }).filter(x=>x.name||x.email||x.uuid||Number.isFinite(x.points));
+    const firstAnswer=doc.querySelector("#scoreTable .answerPaperLink");
+    const href=firstAnswer?.getAttribute("href")||"";
+    const answerURL=href?new URL(href,location.origin).href:"";
+    return{name,reviewPath,students,answerURL,maxPoints:null,maxSource:null};
+  }
+
+  function loadRenderedSameOriginPage(url,readySelector,timeoutMs=15000){
+    return new Promise(resolve=>{
+      const iframe=document.createElement("iframe");
+      iframe.setAttribute("aria-hidden","true");iframe.tabIndex=-1;
+      iframe.style.cssText="position:fixed!important;width:1px!important;height:1px!important;left:-99999px!important;top:-99999px!important;opacity:0!important;pointer-events:none!important;border:0!important;";
+      let done=false,timer=null,timeout=null;
+      const finish=value=>{
+        if(done)return;done=true;
+        if(timer)clearInterval(timer);if(timeout)clearTimeout(timeout);
+        iframe.remove();resolve(value);
+      };
+      const inspect=()=>{
+        try{
+          const doc=iframe.contentDocument;
+          if(doc&&(!readySelector||doc.querySelector(readySelector)))finish(doc.cloneNode(true));
+        }catch(_){}
+      };
+      iframe.addEventListener("load",inspect);
+      document.body.appendChild(iframe);iframe.src=url;
+      timer=setInterval(inspect,250);
+      timeout=setTimeout(()=>finish(null),timeoutMs);
+    });
   }
 
   function detectMaxPointsFromPage(){
@@ -667,7 +718,8 @@
   .aa-table{width:100%;border-collapse:collapse}.aa-table th,.aa-table td{border:1px solid #dde4e0;padding:5px 6px;white-space:nowrap;background:#fff}.aa-table th{position:sticky;top:0;background:#f4f7f5;z-index:2;text-align:left}.aa-table .student{position:sticky;left:0;z-index:1}.aa-table th.student{z-index:3}
   .aa-score{cursor:pointer;text-decoration:underline dotted}.aa-card{border:1px solid #dde4e0;background:#fafcfb;border-radius:9px;padding:9px;margin-bottom:8px}.aa-card h3{margin:0 0 7px;font-size:14px}.aa-area{width:100%;min-height:170px;font-family:ui-monospace,Consolas,monospace}
   .aa-mini{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:6px;align-items:center;padding:6px 2px;border-bottom:1px solid #edf1ef}.aa-mini-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.aa-empty{text-align:center;color:#6a7871;padding:25px}\n  .aa-modal-overlay{position:fixed;inset:0;z-index:2147483647;background:#0007;display:flex;align-items:center;justify-content:center;padding:18px}\n  .aa-modal{width:min(920px,96vw);max-height:90vh;display:flex;flex-direction:column;background:#fff;color:#172026;border:1px solid #87958f;border-radius:10px;box-shadow:0 18px 60px #0006;overflow:hidden}\n  .aa-modal-head{padding:10px 12px;font-weight:800;border-bottom:1px solid #dde4e0;background:#f5f8f6}.aa-modal-body{padding:10px 12px;overflow:auto}.aa-modal-foot{padding:9px 12px;display:flex;justify-content:flex-end;gap:6px;border-top:1px solid #dde4e0;background:#fafcfb}\n  .aa-import-table td,.aa-import-table th{white-space:normal}.aa-row-disabled{opacity:.48}.aa-result-input{width:85px}
-  .aa-destination-options{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px;margin-top:10px}.aa-destination-card{display:flex;flex-direction:column;gap:4px;text-align:left;border:1px solid #bbc8c2;border-radius:9px;background:#fff;color:#172026;padding:12px;cursor:pointer}.aa-destination-card:hover{background:#f5f8f6;border-color:#7f938a}.aa-destination-card strong{font-size:13px}.aa-destination-card span{font-size:11px;color:#6a7871}\n  `);
+  .aa-destination-options{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px;margin-top:10px}.aa-destination-card{display:flex;flex-direction:column;gap:4px;text-align:left;border:1px solid #bbc8c2;border-radius:9px;background:#fff;color:#172026;padding:12px;cursor:pointer}.aa-destination-card:hover{background:#f5f8f6;border-color:#7f938a}.aa-destination-card strong{font-size:13px}.aa-destination-card span{font-size:11px;color:#6a7871}
+  #aa-grading-batchbar{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin:10px 0;padding:9px;border:1px solid #9eaaa4;border-radius:8px;background:#f5f8f6;color:#172026;font:12px system-ui,-apple-system,Segoe UI,sans-serif}#aa-grading-batchbar .aa-batch-hint{flex:1 1 320px;color:#53615a}.aa-batch-col{width:120px;min-width:120px;text-align:center!important}.aa-batch-cell{vertical-align:middle}.aa-batch-check{margin-right:6px}.aa-batch-group{width:48px;padding:3px 5px;border:1px solid #aebbb5;border-radius:5px;text-transform:uppercase}.aa-batch-head .aa-batch-sub{font-size:10px;font-weight:400;color:#66746d}\n  `);
 
   let open=db.settings.panelOpen==null?IS_ABITTI:!!db.settings.panelOpen;
   let compact=db.settings.panelCompact==null?!IS_ABITTI:!!db.settings.panelCompact;
@@ -970,6 +1022,178 @@
   }
 
 
+
+  function nextGroupCode(index){
+    const letters="ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+    return index<letters.length?letters[index]:"G"+(index+1);
+  }
+
+  async function importGradingListBatch(selected,c){
+    if(!selected.length)return;
+    const grouped=new Map();
+    let importedExams=0,failed=0,studentsImported=0;
+
+    for(const item of selected){
+      const existing=findReviewTarget(c,item.reviewPath);
+      if(existing){failed++;continue}
+
+      const doc=await loadRenderedSameOriginPage(item.reviewPath,"#scoreTable tbody tr.student",15000);
+      const detected=detectedExamFromReviewDocument(doc,item.reviewPath,item.title);
+      if(!detected?.students.length){failed++;continue}
+
+      const maxInfo=await resolveDetectedMaxPoints(detected);
+      let maxPoints=maxInfo?.value;
+      if(!(maxPoints>0)){
+        const manual=prompt('Could not calculate maximum points for "'+item.title+'". Enter maximum points:',"");
+        if(manual===null){failed++;continue}
+        maxPoints=num(manual);
+        if(!(maxPoints>0)){failed++;continue}
+      }
+
+      const group=item.group.trim();
+      const key=group?"group:"+group.toUpperCase():"exam:"+item.reviewPath;
+      let target=grouped.get(key);
+
+      if(!target){
+        if(group){
+          const id=uid("assessment");
+          const a=c.assessments[id]={
+            id,
+            name:"Assessment "+group.toUpperCase(),
+            maxPoints:0,
+            defaultWeight:0,
+            type:"exam",
+            source:{type:"composite"},
+            results:{},
+            parts:[],
+            createdAt:now(),
+            updatedAt:now()
+          };
+          target={assessment:a,grouped:true};
+        }else{
+          const id=uid("assessment");
+          const a=c.assessments[id]={
+            id,
+            name:item.title,
+            maxPoints,
+            defaultWeight:0,
+            type:"exam",
+            source:{type:"omaabitti",reviewPath:item.reviewPath},
+            results:{},
+            createdAt:now(),
+            updatedAt:now()
+          };
+          target={assessment:a,grouped:false};
+        }
+        grouped.set(key,target);
+      }
+
+      const selectedIndexes=detected.students.map((_,i)=>i);
+      if(target.grouped){
+        const part={
+          id:uid("part"),
+          name:item.title,
+          maxPoints,
+          source:{type:"omaabitti",reviewPath:item.reviewPath},
+          results:{},
+          createdAt:now(),
+          updatedAt:now()
+        };
+        const stats=importSelectedIntoResults(c,part.results,new Set(selectedIndexes),false,detected);
+        target.assessment.parts.push(part);
+        syncCompositeMax(target.assessment);
+        target.assessment.updatedAt=now();
+        studentsImported+=stats.imported;
+      }else{
+        const stats=importSelectedIntoResults(c,target.assessment.results,new Set(selectedIndexes),false,detected);
+        target.assessment.updatedAt=now();
+        studentsImported+=stats.imported;
+      }
+      importedExams++;
+    }
+
+    c.updatedAt=now();save();render();
+    alert(
+      "Batch import complete.\n"+
+      "Exams imported: "+importedExams+
+      "\nStudent results imported/updated: "+studentsImported+
+      (failed?"\nSkipped/failed exams: "+failed:"")+
+      "\n\nAssessments imported from this page start with weight 0%. Adjust weights in the Assessments tab."
+    );
+    setupGradingListPicker(true);
+  }
+
+  function setupGradingListPicker(force=false){
+    if(!IS_GRADING_LIST)return;
+    const table=document.querySelector("#held-exams");
+    if(!table)return;
+    if(force){
+      document.querySelector("#aa-grading-batchbar")?.remove();
+      table.querySelectorAll(".aa-batch-col").forEach(el=>el.remove());
+      table.removeAttribute("data-aa-batch");
+    }
+    if(table.dataset.aaBatch==="1")return;
+    table.dataset.aaBatch="1";
+
+    const headerRow=table.querySelector("thead tr");
+    if(headerRow){
+      const th=document.createElement("th");th.className="aa-batch-col aa-batch-head";
+      th.innerHTML="<div>Gradebook</div><div class='aa-batch-sub'>✓ + group</div>";
+      headerRow.insertBefore(th,headerRow.firstChild);
+    }
+
+    const rows=[];
+    [...table.querySelectorAll("tbody tr")].forEach((tr,index)=>{
+      const title=tr.querySelector(".examName")?.textContent?.trim()||"OmaAbitti exam";
+      const code=tr.querySelector(".schoolAnonCode")?.textContent?.trim()||"";
+      if(!code)return;
+      const reviewPath="/school/review/"+encodeURIComponent(code);
+      const td=document.createElement("td");td.className="aa-batch-col aa-batch-cell";
+      const cb=document.createElement("input");cb.type="checkbox";cb.className="aa-batch-check";
+      const group=document.createElement("input");group.type="text";group.className="aa-batch-group";group.maxLength=8;group.placeholder=nextGroupCode(index);group.title="Same group code = same gradebook assessment";
+      td.append(cb,group);tr.insertBefore(td,tr.firstChild);
+      rows.push({tr,cb,group,title,reviewPath});
+    });
+
+    const bar=document.createElement("div");bar.id="aa-grading-batchbar";
+    const title=document.createElement("strong");title.textContent="ArviointiApina";
+    const hint=document.createElement("span");hint.className="aa-batch-hint";hint.textContent="Tick exams. Give exams the same group letter/code (for example A) to combine them as parts of one assessment. Leave group blank for separate assessments.";
+
+    const courseSelect=document.createElement("select");courseSelect.className="aa-select";
+    for(const crs of Object.values(db.courses).sort((a,b)=>a.name.localeCompare(b.name,"fi"))){
+      const o=document.createElement("option");o.value=crs.id;o.textContent=crs.name;o.selected=crs.id===db.settings.activeCourseId;courseSelect.appendChild(o);
+    }
+    courseSelect.onchange=()=>{db.settings.activeCourseId=courseSelect.value;save();setupGradingListPicker(true)};
+
+    const selectAll=btn("Select all",()=>rows.forEach(r=>r.cb.checked=true));
+    const none=btn("Select none",()=>rows.forEach(r=>r.cb.checked=false));
+    const importBtn=btn("Add selected to gradebook",async()=>{
+      let targetCourse=course();
+      if(!targetCourse){
+        const n=prompt("Create course/class:","New course");
+        if(!n?.trim())return;
+        targetCourse=createCourse(n.trim());
+      }
+      const selected=rows.filter(r=>r.cb.checked).map(r=>({
+        title:r.title,
+        reviewPath:r.reviewPath,
+        group:r.group.value.trim()
+      }));
+      if(!selected.length)return alert("Select at least one exam.");
+
+      const groupedCounts={};
+      for(const x of selected)if(x.group){const k=x.group.toUpperCase();groupedCounts[k]=(groupedCounts[k]||0)+1}
+      const summary=selected.map(x=>"• "+x.title+(x.group?" → group "+x.group.toUpperCase():" → separate assessment")).join("\n");
+      if(!confirm("Add these exams to "+targetCourse.name+"?\n\n"+summary))return;
+      importBtn.disabled=true;importBtn.textContent="Importing…";
+      try{await importGradingListBatch(selected,targetCourse)}
+      finally{importBtn.disabled=false;importBtn.textContent="Add selected to gradebook"}
+    },"primary");
+
+    bar.append(title,hint,courseSelect,selectAll,none,importBtn);
+    table.parentElement?.insertBefore(bar,table);
+  }
+
   function chooseAssessmentDestination(c){
     return new Promise(resolve=>{
       const overlay=document.createElement("div");overlay.className="aa-modal-overlay";
@@ -1069,4 +1293,11 @@
   GM_registerMenuCommand("Export ArviointiApina backup",backup);
 
   ensureRoot();render();
+
+  if(IS_GRADING_LIST){
+    const installPicker=()=>setupGradingListPicker(false);
+    installPicker();
+    const observer=new MutationObserver(()=>installPicker());
+    observer.observe(document.documentElement,{childList:true,subtree:true});
+  }
 })();
