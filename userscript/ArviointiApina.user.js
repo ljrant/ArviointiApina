@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ArviointiApina BETA
 // @namespace    https://github.com/ljrant/ArviointiApina
-// @version      0.7.0-beta.3
+// @version      0.8.0-beta.1
 // @description  BETA: OmaAbitti + Google Forms result collector and weighted course gradebook.
 // @match        *://*/*
 // @grant        GM_getValue
@@ -722,7 +722,7 @@
   .aa-score{cursor:pointer;text-decoration:underline dotted}.aa-card{border:1px solid #dde4e0;background:#fafcfb;border-radius:9px;padding:9px;margin-bottom:8px}.aa-card h3{margin:0 0 7px;font-size:14px}.aa-area{width:100%;min-height:170px;font-family:ui-monospace,Consolas,monospace}
   .aa-mini{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:6px;align-items:center;padding:6px 2px;border-bottom:1px solid #edf1ef}.aa-mini-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.aa-empty{text-align:center;color:#6a7871;padding:25px}\n  .aa-modal-overlay{position:fixed;inset:0;z-index:2147483647;background:#0007;display:flex;align-items:center;justify-content:center;padding:18px}\n  .aa-modal{width:min(920px,96vw);max-height:90vh;display:flex;flex-direction:column;background:#fff;color:#172026;border:1px solid #87958f;border-radius:10px;box-shadow:0 18px 60px #0006;overflow:hidden}\n  .aa-modal-head{padding:10px 12px;font-weight:800;border-bottom:1px solid #dde4e0;background:#f5f8f6}.aa-modal-body{padding:10px 12px;overflow:auto}.aa-modal-foot{padding:9px 12px;display:flex;justify-content:flex-end;gap:6px;border-top:1px solid #dde4e0;background:#fafcfb}\n  .aa-import-table td,.aa-import-table th{white-space:normal}.aa-row-disabled{opacity:.48}.aa-result-input{width:85px}
   .aa-destination-options{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px;margin-top:10px}.aa-destination-card{display:flex;flex-direction:column;gap:4px;text-align:left;border:1px solid #bbc8c2;border-radius:9px;background:#fff;color:#172026;padding:12px;cursor:pointer}.aa-destination-card:hover{background:#f5f8f6;border-color:#7f938a}.aa-destination-card strong{font-size:13px}.aa-destination-card span{font-size:11px;color:#6a7871}
-  #aa-grading-manager{margin:10px 0 14px;border:1px solid #aebbb5;border-radius:8px;background:#fff;color:#172026;font:12px system-ui,-apple-system,Segoe UI,sans-serif;overflow:hidden}.aa-manager-bar{display:flex;align-items:center;gap:7px;flex-wrap:wrap;padding:8px;background:#f5f8f6;border-bottom:1px solid #d7dfdb}.aa-manager-table{width:100%;border-collapse:collapse}.aa-manager-table th,.aa-manager-table td{padding:7px 8px;border-bottom:1px solid #e1e6e3;text-align:left;vertical-align:middle}.aa-manager-table th{background:#fafcfb}.aa-manager-exam{min-width:260px;font-weight:600}.aa-manager-select{min-width:155px}.aa-add-group-select{min-width:145px}.aa-manager-select .aa-batch-check{margin-right:7px}.aa-manager-courses{min-width:280px}.aa-course-chip{display:inline-block;margin:2px 5px 2px 0;padding:4px 7px;border:1px solid #9dafaa;border-radius:999px;background:#f7faf8;color:#24362f;cursor:pointer;font-size:11px}.aa-course-chip:hover{background:#edf4f0}.aa-placement-table{margin-top:10px}.aa-sortable-head{cursor:pointer;user-select:none}.aa-sortable-head:hover{background:#eef4f1!important}.aa-sortable-head.active{font-weight:800}.aa-sort-arrow{font-size:10px;white-space:nowrap}
+  #aa-grading-manager{margin:10px 0 14px;border:1px solid #aebbb5;border-radius:8px;background:#fff;color:#172026;font:12px system-ui,-apple-system,Segoe UI,sans-serif;overflow:hidden}.aa-manager-bar{display:flex;align-items:center;gap:7px;flex-wrap:wrap;padding:8px;background:#f5f8f6;border-bottom:1px solid #d7dfdb}.aa-manager-table{width:100%;border-collapse:collapse}.aa-manager-table th,.aa-manager-table td{padding:7px 8px;border-bottom:1px solid #e1e6e3;text-align:left;vertical-align:middle}.aa-manager-table th{background:#fafcfb}.aa-manager-exam{min-width:260px;font-weight:600}.aa-manager-select{min-width:155px}.aa-add-group-select{min-width:145px}.aa-manager-select .aa-batch-check{margin-right:7px}.aa-manager-courses{min-width:280px}.aa-course-chip{display:inline-block;margin:2px 5px 2px 0;padding:4px 7px;border:1px solid #9dafaa;border-radius:999px;background:#f7faf8;color:#24362f;cursor:pointer;font-size:11px}.aa-course-chip:hover{background:#edf4f0}.aa-placement-table{margin-top:10px}.aa-placement-card{margin-top:10px}.aa-placement-title{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:8px}.aa-placement-title label{display:flex;align-items:center;gap:6px}.aa-sortable-head{cursor:pointer;user-select:none}.aa-sortable-head:hover{background:#eef4f1!important}.aa-sortable-head.active{font-weight:800}.aa-sort-arrow{font-size:10px;white-space:nowrap}
 
   #aa-grading-batchbar{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin:10px 0;padding:9px;border:1px solid #9eaaa4;border-radius:8px;background:#f5f8f6;color:#172026;font:12px system-ui,-apple-system,Segoe UI,sans-serif}#aa-grading-batchbar .aa-batch-hint{flex:1 1 320px;color:#53615a}.aa-batch-col{width:120px;min-width:120px;text-align:center!important}.aa-batch-cell{vertical-align:middle}.aa-batch-check{margin-right:6px}.aa-batch-group{width:48px;padding:3px 5px;border:1px solid #aebbb5;border-radius:5px;text-transform:uppercase}.aa-batch-head .aa-batch-sub{font-size:10px;font-weight:400;color:#66746d}\n  `);
 
@@ -1048,47 +1048,170 @@
     return x.part?partEffect(x.part):1;
   }
 
+  function removeAssessmentCompletely(c,a){
+    delete c.assessments[a.id];
+    for(const st of Object.values(c.students||{}))delete st.weightingOverrides?.[a.id];
+  }
+
+  function removeExamPlacement(c,x){
+    if(x.part){
+      x.assessment.parts=(x.assessment.parts||[]).filter(p=>p.id!==x.part.id);
+      if(!x.assessment.parts.length)removeAssessmentCompletely(c,x.assessment);
+      else{
+        syncCompositeMax(x.assessment);
+        x.assessment.updatedAt=now();
+      }
+    }else{
+      removeAssessmentCompletely(c,x.assessment);
+    }
+    c.updatedAt=now();
+  }
+
+  function partFromPlacement(x,title){
+    if(x.part)return x.part;
+    return{
+      id:uid("part"),
+      name:x.assessment.name||title||"Exam part",
+      maxPoints:num(x.assessment.maxPoints)||0,
+      effect:1,
+      source:x.assessment.source?{...x.assessment.source}:{type:"omaabitti"},
+      results:{...(x.assessment.results||{})},
+      createdAt:x.assessment.createdAt||now(),
+      updatedAt:now()
+    };
+  }
+
+  function movePlacementIntoAssessment(c,x,target,title){
+    if(x.assessment.id===target.id){
+      const parts=ensureParts(target);
+      return x.part||parts.find(p=>p.source?.reviewPath===x.assessment.source?.reviewPath)||parts[0];
+    }
+    const part=partFromPlacement(x,title);
+    if(x.part){
+      x.assessment.parts=(x.assessment.parts||[]).filter(p=>p.id!==x.part.id);
+      if(!x.assessment.parts.length)removeAssessmentCompletely(c,x.assessment);
+      else syncCompositeMax(x.assessment);
+    }else{
+      removeAssessmentCompletely(c,x.assessment);
+    }
+    const parts=ensureParts(target);
+    if(!parts.some(p=>p.source?.reviewPath===part.source?.reviewPath))parts.push(part);
+    syncCompositeMax(target);target.updatedAt=now();c.updatedAt=now();
+    return part;
+  }
+
+  function editPartScores(c,a,p){
+    const overlay=document.createElement("div");overlay.className="aa-modal-overlay";
+    const modal=document.createElement("div");modal.className="aa-modal";
+    const head=document.createElement("div");head.className="aa-modal-head";head.textContent="Edit scores · "+p.name;
+    const body=document.createElement("div");body.className="aa-modal-body";
+    const table=document.createElement("table");table.className="aa-table";
+    table.innerHTML="<thead><tr><th>Student</th><th>Points</th></tr></thead>";
+    const tbody=document.createElement("tbody"),rows=[];
+    for(const st of Object.values(c.students||{}).sort((a,b)=>a.canonicalName.localeCompare(b.canonicalName,"fi"))){
+      const tr=document.createElement("tr"),n=document.createElement("td"),v=document.createElement("td");
+      n.textContent=st.canonicalName;
+      const input=document.createElement("input");input.className="aa-input aa-result-input";input.value=p.results?.[st.id]?.points??"";input.placeholder="blank = no result";
+      v.appendChild(input);tr.append(n,v);tbody.appendChild(tr);rows.push({st,input});
+    }
+    table.appendChild(tbody);body.appendChild(table);
+    const foot=document.createElement("div");foot.className="aa-modal-foot";
+    const close=()=>overlay.remove();
+    foot.append(btn("Cancel",close),btn("Save scores",()=>{
+      p.results||={};
+      for(const {st,input} of rows){
+        const raw=input.value.trim();
+        if(!raw){delete p.results[st.id];continue}
+        const points=num(raw);if(!Number.isFinite(points))return alert("Invalid score for "+st.canonicalName+".");
+        p.results[st.id]={...(p.results[st.id]||{}),points,editedAt:now()};
+      }
+      p.updatedAt=now();a.updatedAt=now();c.updatedAt=now();save();close();render();setupGradingListPicker(true);
+    },"primary"));
+    modal.append(head,body,foot);overlay.appendChild(modal);document.body.appendChild(overlay);
+    overlay.onclick=ev=>{if(ev.target===overlay)close()};
+  }
+
   function editExamPlacements(reviewPath,title){
     const placements=placementsForReviewPath(reviewPath);
     if(!placements.length)return alert("This exam has not been added to any course yet.");
 
     const overlay=document.createElement("div");overlay.className="aa-modal-overlay";
     const modal=document.createElement("div");modal.className="aa-modal";
-    const head=document.createElement("div");head.className="aa-modal-head";head.textContent="Course settings · "+title;
+    const head=document.createElement("div");head.className="aa-modal-head";head.textContent="Exam / assessment settings · "+title;
     const body=document.createElement("div");body.className="aa-modal-body";
     const note=document.createElement("div");note.className="aa-muted aa-small";
-    note.textContent="Weight is the course-grade weight of the assessment. Effect controls this exam's relative contribution inside a multi-part assessment (1 = normal, 0.5 = half, 2 = double).";
+    note.textContent="Each course is independent. For multi-part assessments, all related exams are shown here. Edit assessment weight, per-exam maximum/effect, student scores, or remove an exam from that course.";
     body.appendChild(note);
 
-    const table=document.createElement("table");table.className="aa-table aa-placement-table";
-    table.innerHTML="<thead><tr><th>Course</th><th>Assessment</th><th>Weight %</th><th>Exam effect</th></tr></thead>";
-    const tbody=document.createElement("tbody");
-    const edits=[];
+    const blocks=[];
+    const seen=new Set();
+    for(const placement of placements){
+      const key=placement.course.id+"|"+placement.assessment.id;
+      if(seen.has(key))continue;seen.add(key);
+      const c=placement.course,a=placement.assessment;
+      const card=document.createElement("div");card.className="aa-card aa-placement-card";
+      const h=document.createElement("div");h.className="aa-placement-title";
+      const name=document.createElement("strong");name.textContent=c.name+" · "+a.name;
+      const weightLabel=document.createElement("label");weightLabel.textContent="Assessment weight % ";
+      const weight=document.createElement("input");weight.className="aa-input aa-result-input";weight.value=a.defaultWeight??0;
+      weightLabel.appendChild(weight);h.append(name,weightLabel);card.appendChild(h);
 
-    for(const x of placements){
-      const tr=document.createElement("tr");
-      const ctd=document.createElement("td");ctd.textContent=x.course.name;
-      const atd=document.createElement("td");atd.textContent=x.assessment.name;
-      const wtd=document.createElement("td"),etd=document.createElement("td");
-      const w=document.createElement("input");w.className="aa-input aa-result-input";w.value=x.assessment.defaultWeight??0;
-      const e=document.createElement("input");e.className="aa-input aa-result-input";e.value=placementEffect(x);e.disabled=!x.part;
-      if(!x.part)e.title="Effect only changes the balance between parts of a multi-part assessment.";
-      wtd.appendChild(w);etd.appendChild(e);tr.append(ctd,atd,wtd,etd);tbody.appendChild(tr);
-      edits.push({x,w,e});
+      const table=document.createElement("table");table.className="aa-table aa-placement-table";
+      table.innerHTML="<thead><tr><th>Exam / part</th><th>Max</th><th>Effect</th><th>Results</th><th></th></tr></thead>";
+      const tbody=document.createElement("tbody"),partEdits=[];
+
+      if(hasParts(a)){
+        for(const p of a.parts){
+          const tr=document.createElement("tr");
+          const n=document.createElement("td");n.textContent=p.name;
+          if(p.source?.reviewPath===reviewPath)n.innerHTML="<strong>"+esc(p.name)+"</strong> <span class='aa-muted'>(selected)</span>";
+          const mtd=document.createElement("td"),etd=document.createElement("td"),rtd=document.createElement("td"),actions=document.createElement("td");
+          const max=document.createElement("input");max.className="aa-input aa-result-input";max.value=p.maxPoints;
+          const effect=document.createElement("input");effect.className="aa-input aa-result-input";effect.value=partEffect(p);
+          mtd.appendChild(max);etd.appendChild(effect);rtd.textContent=Object.keys(p.results||{}).length;
+          actions.append(
+            btn("Edit scores",()=>editPartScores(c,a,p)),
+            btn("Remove from course",()=>{
+              if(!confirm('Remove "'+p.name+'" from '+c.name+'? Student results for this exam in this course will be removed.'))return;
+              removeExamPlacement(c,{course:c,assessment:a,part:p});save();overlay.remove();render();setupGradingListPicker(true);
+            },"danger")
+          );
+          tr.append(n,mtd,etd,rtd,actions);tbody.appendChild(tr);partEdits.push({p,max,effect});
+        }
+      }else{
+        const tr=document.createElement("tr");
+        const n=document.createElement("td");n.innerHTML="<strong>"+esc(a.name)+"</strong> <span class='aa-muted'>(selected)</span>";
+        const mtd=document.createElement("td"),etd=document.createElement("td"),rtd=document.createElement("td"),actions=document.createElement("td");
+        const max=document.createElement("input");max.className="aa-input aa-result-input";max.value=a.maxPoints;
+        mtd.appendChild(max);etd.textContent="—";rtd.textContent=Object.keys(a.results||{}).length;
+        actions.append(
+          btn("Edit scores",()=>manageAssessmentStudents(c,a)),
+          btn("Remove from course",()=>{
+            if(!confirm('Remove "'+a.name+'" from '+c.name+'?'))return;
+            removeExamPlacement(c,{course:c,assessment:a,part:null});save();overlay.remove();render();setupGradingListPicker(true);
+          },"danger")
+        );
+        tr.append(n,mtd,etd,rtd,actions);tbody.appendChild(tr);partEdits.push({p:null,max,effect:null});
+      }
+
+      table.appendChild(tbody);card.appendChild(table);body.appendChild(card);
+      blocks.push({c,a,weight,partEdits});
     }
-    table.appendChild(tbody);body.appendChild(table);
 
     const foot=document.createElement("div");foot.className="aa-modal-foot";
     const close=()=>overlay.remove();
-    foot.append(btn("Cancel",close),btn("Save",()=>{
-      for(const {x,w,e} of edits){
-        const weight=num(w.value);if(!(weight>=0))return alert("Invalid weight for "+x.course.name+".");
-        x.assessment.defaultWeight=weight;
-        if(x.part){
-          const effect=num(e.value);if(!(effect>=0))return alert("Invalid exam effect for "+x.course.name+".");
-          x.part.effect=effect;x.part.updatedAt=now();syncCompositeMax(x.assessment);
+    foot.append(btn("Cancel",close),btn("Save changes",()=>{
+      for(const block of blocks){
+        const w=num(block.weight.value);if(!(w>=0))return alert("Invalid assessment weight for "+block.c.name+".");
+        block.a.defaultWeight=w;
+        for(const edit of block.partEdits){
+          const max=num(edit.max.value);if(!(max>0))return alert("Invalid maximum.");
+          if(edit.p){
+            const effect=num(edit.effect.value);if(!(effect>=0))return alert("Invalid exam effect.");
+            edit.p.maxPoints=max;edit.p.effect=effect;edit.p.updatedAt=now();
+          }else block.a.maxPoints=max;
         }
-        x.assessment.updatedAt=now();x.course.updatedAt=now();
+        syncCompositeMax(block.a);block.a.updatedAt=now();block.c.updatedAt=now();
       }
       save();close();render();setupGradingListPicker(true);
     },"primary"));
@@ -1098,96 +1221,119 @@
 
   async function importGradingListBatch(selected,c){
     if(!selected.length)return;
-    const grouped=new Map();
     let importedExams=0,failed=0,studentsImported=0;
 
+    const groupedSelections=new Map();
     for(const item of selected){
-      const existing=findReviewTarget(c,item.reviewPath);
-      if(existing){failed++;continue}
+      const group=item.group.trim().toUpperCase();
+      const key=group?"group:"+group:"exam:"+item.reviewPath;
+      const arr=groupedSelections.get(key)||[];arr.push({...item,group});groupedSelections.set(key,arr);
+    }
 
-      const doc=await loadRenderedSameOriginPage(item.reviewPath,"#scoreTable tbody tr.student",15000);
-      const detected=detectedExamFromReviewDocument(doc,item.reviewPath,item.title);
-      if(!detected?.students.length){failed++;continue}
+    for(const [key,items] of groupedSelections){
+      const isGroup=key.startsWith("group:");
+      let target=null;
 
-      const maxInfo=await resolveDetectedMaxPoints(detected);
-      let maxPoints=maxInfo?.value;
-      if(!(maxPoints>0)){
-        const manual=prompt('Could not calculate maximum points for "'+item.title+'". Enter maximum points:',"");
-        if(manual===null){failed++;continue}
-        maxPoints=num(manual);
-        if(!(maxPoints>0)){failed++;continue}
-      }
+      if(isGroup){
+        // An already-imported selected exam anchors the group to its existing
+        // assessment. This makes "existing exam + new exam = multipart" work.
+        const existingPlacements=items.map(item=>({item,x:findReviewTarget(c,item.reviewPath)})).filter(v=>v.x);
+        if(existingPlacements.length)target=existingPlacements[0].x.assessment;
 
-      const group=item.group.trim();
-      const key=group?"group:"+group.toUpperCase():"exam:"+item.reviewPath;
-      let target=grouped.get(key);
-
-      if(!target){
-        if(group){
+        if(!target){
+          const group=items[0].group;
           const id=uid("assessment");
-          const a=c.assessments[id]={
-            id,
-            name:"Assessment "+group.toUpperCase(),
-            maxPoints:0,
-            defaultWeight:0,
-            type:"exam",
-            source:{type:"composite"},
-            results:{},
-            parts:[],
-            createdAt:now(),
-            updatedAt:now()
+          target=c.assessments[id]={
+            id,name:"Assessment "+group,maxPoints:0,defaultWeight:0,type:"exam",
+            source:{type:"composite"},results:{},parts:[],createdAt:now(),updatedAt:now()
           };
-          target={assessment:a,grouped:true};
         }else{
-          const id=uid("assessment");
-          const a=c.assessments[id]={
-            id,
-            name:item.title,
-            maxPoints,
-            defaultWeight:0,
-            type:"exam",
-            source:{type:"omaabitti",reviewPath:item.reviewPath},
-            results:{},
-            createdAt:now(),
-            updatedAt:now()
-          };
-          target={assessment:a,grouped:false};
+          ensureParts(target);
         }
-        grouped.set(key,target);
+
+        // If other selected exams already live in separate assessments, merge
+        // them into the anchored target because the shared group explicitly
+        // requests one multipart assessment.
+        for(const {item,x} of existingPlacements){
+          if(x.assessment.id!==target.id)movePlacementIntoAssessment(c,x,target,item.title);
+        }
       }
 
-      const selectedIndexes=detected.students.map((_,i)=>i);
-      if(target.grouped){
-        const part={
-          id:uid("part"),
-          name:item.title,
-          maxPoints,
-          effect:1,
-          source:{type:"omaabitti",reviewPath:item.reviewPath},
-          results:{},
-          createdAt:now(),
-          updatedAt:now()
-        };
-        const stats=importSelectedIntoResults(c,part.results,new Set(selectedIndexes),false,detected);
-        target.assessment.parts.push(part);
-        syncCompositeMax(target.assessment);
-        target.assessment.updatedAt=now();
-        studentsImported+=stats.imported;
-      }else{
-        const stats=importSelectedIntoResults(c,target.assessment.results,new Set(selectedIndexes),false,detected);
-        target.assessment.updatedAt=now();
-        studentsImported+=stats.imported;
+      for(const item of items){
+        let existing=findReviewTarget(c,item.reviewPath);
+
+        if(!isGroup&&existing){
+          // Already present as its own assessment: refresh its scores/max rather
+          // than silently failing.
+          target=existing.assessment;
+        }
+
+        const doc=await loadRenderedSameOriginPage(item.reviewPath,"#scoreTable tbody tr.student",15000);
+        const detected=detectedExamFromReviewDocument(doc,item.reviewPath,item.title);
+        if(!detected?.students.length){failed++;continue}
+
+        const maxInfo=await resolveDetectedMaxPoints(detected);
+        let maxPoints=maxInfo?.value;
+        if(!(maxPoints>0)){
+          const manual=prompt('Could not calculate maximum points for "'+item.title+'". Enter maximum points:',"");
+          if(manual===null){failed++;continue}
+          maxPoints=num(manual);
+          if(!(maxPoints>0)){failed++;continue}
+        }
+
+        const selectedIndexes=new Set(detected.students.map((_,i)=>i));
+
+        if(isGroup){
+          ensureParts(target);
+          existing=findReviewTarget(c,item.reviewPath);
+          let part=null;
+          if(existing){
+            if(existing.assessment.id!==target.id)part=movePlacementIntoAssessment(c,existing,target,item.title);
+            else part=existing.part||target.parts.find(p=>p.source?.reviewPath===item.reviewPath);
+          }
+          if(!part){
+            part={
+              id:uid("part"),name:item.title,maxPoints,effect:1,
+              source:{type:"omaabitti",reviewPath:item.reviewPath},results:{},
+              createdAt:now(),updatedAt:now()
+            };
+            target.parts.push(part);
+          }
+          part.name=item.title;part.maxPoints=maxPoints;part.updatedAt=now();part.results||={};
+          const stats=importSelectedIntoResults(c,part.results,selectedIndexes,false,detected);
+          studentsImported+=stats.imported;syncCompositeMax(target);target.updatedAt=now();
+        }else{
+          existing=findReviewTarget(c,item.reviewPath);
+          if(existing){
+            if(existing.part){
+              existing.part.name=item.title;existing.part.maxPoints=maxPoints;existing.part.updatedAt=now();
+              const stats=importSelectedIntoResults(c,existing.part.results,selectedIndexes,false,detected);
+              studentsImported+=stats.imported;syncCompositeMax(existing.assessment);
+            }else{
+              existing.assessment.name=item.title;existing.assessment.maxPoints=maxPoints;existing.assessment.updatedAt=now();
+              const stats=importSelectedIntoResults(c,existing.assessment.results,selectedIndexes,false,detected);
+              studentsImported+=stats.imported;
+            }
+          }else{
+            const id=uid("assessment");
+            const a=c.assessments[id]={
+              id,name:item.title,maxPoints,defaultWeight:0,type:"exam",
+              source:{type:"omaabitti",reviewPath:item.reviewPath},results:{},createdAt:now(),updatedAt:now()
+            };
+            const stats=importSelectedIntoResults(c,a.results,selectedIndexes,false,detected);
+            studentsImported+=stats.imported;
+          }
+        }
+        importedExams++;
       }
-      importedExams++;
     }
 
     c.updatedAt=now();save();render();
     alert(
       "Batch import complete.\n"+
-      "Exams imported: "+importedExams+
+      "Exams imported/updated: "+importedExams+
       "\nStudent results imported/updated: "+studentsImported+
-      (failed?"\nSkipped/failed exams: "+failed:"")+
-      "\n\nAssessments imported from this page start with weight 0%. Adjust weights in the Assessments tab."
+      (failed?"\nSkipped/failed exams: "+failed:"")
     );
     setupGradingListPicker(true);
   }
@@ -1426,7 +1572,7 @@
             const x=arr[0],chip=document.createElement("button");chip.type="button";chip.className="aa-course-chip";
             const effect=x.part?" · effect "+fmt(partEffect(x.part),2):"";
             chip.textContent=x.course.name+" · "+fmt(num(x.assessment.defaultWeight)||0,1)+"% · "+x.assessment.name+effect;
-            chip.title="Edit weight / assessment effect";
+            chip.title="Open assessment: edit weight, related exam parts, scores, or remove from course";
             chip.onclick=()=>editExamPlacements(item.reviewPath,item.title);
             courses.appendChild(chip);
           }
