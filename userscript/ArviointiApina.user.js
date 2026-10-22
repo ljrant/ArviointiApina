@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ArviointiApina BETA
 // @namespace    https://github.com/ljrant/ArviointiApina
-// @version      0.5.0-beta.4
+// @version      0.5.0-beta.5
 // @description  BETA: OmaAbitti + Google Forms result collector and weighted course gradebook.
 // @match        *://*/*
 // @grant        GM_getValue
@@ -710,7 +710,36 @@
 
   function header(p){
     const h=document.createElement("div");h.className="aa-head";const title=document.createElement("div");title.className="aa-title";title.textContent="ArviointiApina BETA";h.appendChild(title);
-    const s=document.createElement("select");s.className="aa-select";for(const c of Object.values(db.courses).sort((a,b)=>a.name.localeCompare(b.name,"fi"))){const o=document.createElement("option");o.value=c.id;o.textContent=c.name;o.selected=c.id===db.settings.activeCourseId;s.appendChild(o)}s.onchange=()=>{db.settings.activeCourseId=s.value;save();render()};h.appendChild(s);
+
+    const s=document.createElement("select");s.className="aa-select";
+    for(const c of Object.values(db.courses).sort((a,b)=>a.name.localeCompare(b.name,"fi"))){
+      const o=document.createElement("option");o.value=c.id;o.textContent=c.name;o.selected=c.id===db.settings.activeCourseId;s.appendChild(o)
+    }
+    s.onchange=()=>{db.settings.activeCourseId=s.value;save();render()};
+    h.appendChild(s);
+
+    const active=course();
+    if(active){
+      const nameInput=document.createElement("input");
+      nameInput.className="aa-input";
+      nameInput.value=active.name;
+      nameInput.placeholder="Course name";
+      nameInput.style.width="180px";
+      const commitName=()=>{
+        const next=nameInput.value.trim();
+        if(!next){nameInput.value=active.name;return}
+        if(next!==active.name){
+          active.name=next;
+          active.updatedAt=now();
+          save();
+          render();
+        }
+      };
+      nameInput.onchange=commitName;
+      nameInput.onkeydown=e=>{if(e.key==="Enter"){e.preventDefault();commitName();nameInput.blur()}};
+      h.appendChild(nameInput);
+    }
+
     h.appendChild(btn("+ Course",()=>{const n=prompt("Course/class name:");if(n?.trim()){createCourse(n);render()}}));
     if(IS_ABITTI)h.appendChild(btn("Import OmaAbitti",importDialog,"primary"));
     h.appendChild(btn(compact?"Full":"Compact",()=>{setPanelState(true,!compact);render()}));h.appendChild(btn("×",()=>{setPanelState(false,compact);render()}));p.appendChild(h);
