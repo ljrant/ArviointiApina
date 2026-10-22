@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ArviointiApina BETA
 // @namespace    https://github.com/ljrant/ArviointiApina
-// @version      0.5.0-beta.3
+// @version      0.5.0-beta.4
 // @description  BETA: OmaAbitti + Google Forms result collector and weighted course gradebook.
 // @match        *://*/*
 // @grant        GM_getValue
@@ -34,7 +34,7 @@
   const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
   const fmt=(n,d=1)=>Number.isFinite(n)?String(Math.round(n*10**d)/10**d).replace(".",","):"";
 
-  function fresh(){return{version:1,settings:{activeCourseId:null,activeTab:"gradebook"},courses:{}}}
+  function fresh(){return{version:1,settings:{activeCourseId:null,activeTab:"gradebook",panelOpen:null,panelCompact:null},courses:{}}}
   function load(){try{const raw=GM_getValue(KEY,"");if(!raw)return fresh();const x=typeof raw==="string"?JSON.parse(raw):raw;return{...fresh(),...x,settings:{...fresh().settings,...(x.settings||{})},courses:x.courses||{}}}catch(e){console.error(e);return fresh()}}
   let db=load();
   const save=()=>GM_setValue(KEY,JSON.stringify(db));
@@ -668,9 +668,35 @@
   .aa-score{cursor:pointer;text-decoration:underline dotted}.aa-card{border:1px solid #dde4e0;background:#fafcfb;border-radius:9px;padding:9px;margin-bottom:8px}.aa-card h3{margin:0 0 7px;font-size:14px}.aa-area{width:100%;min-height:170px;font-family:ui-monospace,Consolas,monospace}
   .aa-mini{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:6px;align-items:center;padding:6px 2px;border-bottom:1px solid #edf1ef}.aa-mini-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.aa-empty{text-align:center;color:#6a7871;padding:25px}\n  .aa-modal-overlay{position:fixed;inset:0;z-index:2147483647;background:#0007;display:flex;align-items:center;justify-content:center;padding:18px}\n  .aa-modal{width:min(920px,96vw);max-height:90vh;display:flex;flex-direction:column;background:#fff;color:#172026;border:1px solid #87958f;border-radius:10px;box-shadow:0 18px 60px #0006;overflow:hidden}\n  .aa-modal-head{padding:10px 12px;font-weight:800;border-bottom:1px solid #dde4e0;background:#f5f8f6}.aa-modal-body{padding:10px 12px;overflow:auto}.aa-modal-foot{padding:9px 12px;display:flex;justify-content:flex-end;gap:6px;border-top:1px solid #dde4e0;background:#fafcfb}\n  .aa-import-table td,.aa-import-table th{white-space:normal}.aa-row-disabled{opacity:.48}.aa-result-input{width:85px}\n  `);
 
-  let open=IS_ABITTI,compact=!IS_ABITTI,root=null;
+  let open=db.settings.panelOpen==null?IS_ABITTI:!!db.settings.panelOpen;
+  let compact=db.settings.panelCompact==null?!IS_ABITTI:!!db.settings.panelCompact;
+  let root=null;
+
+  // Persist panel state in GM storage so navigation/reloads do not close the gradebook.
+  // GM storage belongs to the userscript, so this state follows the user across matched sites.
+  if(db.settings.panelOpen==null||db.settings.panelCompact==null){
+    db.settings.panelOpen=open;
+    db.settings.panelCompact=compact;
+    save();
+  }
+
+  function setPanelState(nextOpen=open,nextCompact=compact){
+    open=!!nextOpen;
+    compact=!!nextCompact;
+    db.settings.panelOpen=open;
+    db.settings.panelCompact=compact;
+    save();
+  }
+
   function btn(t,fn,cls=""){const b=document.createElement("button");b.type="button";b.className="aa-btn "+cls;b.textContent=t;b.onclick=fn;return b}
-  function ensureRoot(){if(root)return;root=document.createElement("div");root.id="aa-root";const l=document.createElement("button");l.id="aa-launch";l.textContent="Grades";l.onclick=()=>{open=!open;render()};root.appendChild(l);document.body.appendChild(root)}
+  function ensureRoot(){
+    if(root)return;
+    root=document.createElement("div");root.id="aa-root";
+    const l=document.createElement("button");l.id="aa-launch";l.textContent="Grades";
+    l.title="Open/close ArviointiApina gradebook";
+    l.onclick=()=>{setPanelState(!open,compact);render()};
+    root.appendChild(l);document.body.appendChild(root)
+  }
   function ensureCourse(){if(db.settings.activeCourseId&&db.courses[db.settings.activeCourseId])return;db.settings.activeCourseId=Object.keys(db.courses)[0]||null;save()}
 
   function render(){
@@ -687,7 +713,7 @@
     const s=document.createElement("select");s.className="aa-select";for(const c of Object.values(db.courses).sort((a,b)=>a.name.localeCompare(b.name,"fi"))){const o=document.createElement("option");o.value=c.id;o.textContent=c.name;o.selected=c.id===db.settings.activeCourseId;s.appendChild(o)}s.onchange=()=>{db.settings.activeCourseId=s.value;save();render()};h.appendChild(s);
     h.appendChild(btn("+ Course",()=>{const n=prompt("Course/class name:");if(n?.trim()){createCourse(n);render()}}));
     if(IS_ABITTI)h.appendChild(btn("Import OmaAbitti",importDialog,"primary"));
-    h.appendChild(btn(compact?"Full":"Compact",()=>{compact=!compact;render()}));h.appendChild(btn("×",()=>{open=false;render()}));p.appendChild(h);
+    h.appendChild(btn(compact?"Full":"Compact",()=>{setPanelState(true,!compact);render()}));h.appendChild(btn("×",()=>{setPanelState(false,compact);render()}));p.appendChild(h);
   }
 
   function tabs(p){
@@ -974,8 +1000,8 @@
     importExam(c,name.trim(),max,w,selection.selected,selection.existingOnly);
   }
 
-  GM_registerMenuCommand("Open ArviointiApina",()=>{open=true;compact=false;render()});
-  GM_registerMenuCommand("Open compact grade panel",()=>{open=true;compact=true;render()});
+  GM_registerMenuCommand("Open ArviointiApina",()=>{setPanelState(true,false);render()});
+  GM_registerMenuCommand("Open compact grade panel",()=>{setPanelState(true,true);render()});
   GM_registerMenuCommand("Import Google Forms quiz CSV (BETA)",chooseGoogleFormsCSV);
   GM_registerMenuCommand("Export ArviointiApina backup",backup);
 
