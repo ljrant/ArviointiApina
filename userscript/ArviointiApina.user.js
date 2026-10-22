@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ArviointiApina BETA
 // @namespace    https://github.com/ljrant/ArviointiApina
-// @version      0.6.0-beta.2
+// @version      0.6.0-beta.3
 // @description  BETA: OmaAbitti + Google Forms result collector and weighted course gradebook.
 // @match        *://*/*
 // @grant        GM_getValue
@@ -1137,6 +1137,12 @@
     const examRows=[...table.querySelectorAll("tbody tr")];
     if(!examRows.length)return;
 
+    // MutationObserver also sees ArviointiApina's own DOM changes.
+    // If the current table is already fully enhanced, do nothing.
+    const existingBar=document.querySelector("#aa-grading-batchbar");
+    const existingCells=table.querySelectorAll("tbody tr > .aa-batch-cell").length;
+    if(!force&&table.dataset.aaBatch==="1"&&existingBar&&existingCells>0)return;
+
     const headerRow=table.querySelector("thead tr");
     if(headerRow&&!headerRow.querySelector(".aa-batch-head")){
       const th=document.createElement("th");
@@ -1202,8 +1208,8 @@
     table.dataset.aaBatch="1";
 
     let bar=document.querySelector("#aa-grading-batchbar");
-    if(bar)bar.remove();
-    bar=document.createElement("div");bar.id="aa-grading-batchbar";
+    if(!bar){bar=document.createElement("div");bar.id="aa-grading-batchbar"}
+    else bar.innerHTML="";
     const title=document.createElement("strong");title.textContent="ArviointiApina";
     const hint=document.createElement("span");hint.className="aa-batch-hint";
     hint.textContent="Tick exams. Give exams the same group letter/code (for example A) to combine them as parts of one assessment. Leave group blank for separate assessments.";
@@ -1342,9 +1348,20 @@
   ensureRoot();render();
 
   if(IS_GRADING_LIST){
+    let gradingPickerTimer=null;
     const installPicker=()=>setupGradingListPicker(false);
     installPicker();
-    const observer=new MutationObserver(()=>installPicker());
+    const observer=new MutationObserver(()=>{
+      clearTimeout(gradingPickerTimer);
+      gradingPickerTimer=setTimeout(()=>{
+        const table=document.querySelector("#held-exams");
+        if(!table)return;
+        const hasRows=!!table.querySelector("tbody tr");
+        const hasControls=!!table.querySelector("tbody tr > .aa-batch-cell");
+        const hasBar=!!document.querySelector("#aa-grading-batchbar");
+        if(hasRows&&(!hasControls||!hasBar||table.dataset.aaBatch!=="1"))installPicker();
+      },120);
+    });
     observer.observe(document.documentElement,{childList:true,subtree:true});
   }
 })();
