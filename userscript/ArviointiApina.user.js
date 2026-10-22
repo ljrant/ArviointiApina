@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ArviointiApina BETA
 // @namespace    https://github.com/ljrant/ArviointiApina
-// @version      0.6.0-beta.3
+// @version      0.7.0-beta.1
 // @description  BETA: OmaAbitti + Google Forms result collector and weighted course gradebook.
 // @match        *://*/*
 // @grant        GM_getValue
@@ -35,7 +35,7 @@
   const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
   const fmt=(n,d=1)=>Number.isFinite(n)?String(Math.round(n*10**d)/10**d).replace(".",","):"";
 
-  function fresh(){return{version:1,settings:{activeCourseId:null,activeTab:"gradebook",panelOpen:null,panelCompact:null},courses:{}}}
+  function fresh(){return{version:1,settings:{activeCourseId:null,activeTab:"gradebook",panelOpen:null,panelCompact:null,gradingListSort:"date-desc"},courses:{}}}
   function load(){try{const raw=GM_getValue(KEY,"");if(!raw)return fresh();const x=typeof raw==="string"?JSON.parse(raw):raw;return{...fresh(),...x,settings:{...fresh().settings,...(x.settings||{})},courses:x.courses||{}}}catch(e){console.error(e);return fresh()}}
   let db=load();
   const save=()=>GM_setValue(KEY,JSON.stringify(db));
@@ -293,9 +293,11 @@
 
   const hasParts=a=>Array.isArray(a?.parts)&&a.parts.length>0;
 
+  function partEffect(p){const x=num(p?.effect);return Number.isFinite(x)&&x>=0?x:1}
+
   function effectiveMax(a){
     if(hasParts(a)){
-      return a.parts.reduce((sum,p)=>sum+(num(p.maxPoints)||0),0);
+      return a.parts.reduce((sum,p)=>sum+(num(p.maxPoints)||0)*partEffect(p),0);
     }
     return num(a.maxPoints);
   }
@@ -305,7 +307,7 @@
     let any=false,total=0,completed=0;
     for(const p of a.parts){
       const r=p.results?.[studentId],points=num(r?.points);
-      if(Number.isFinite(points)){any=true;total+=points;completed++}
+      if(Number.isFinite(points)){any=true;total+=points*partEffect(p);completed++}
     }
     if(!any)return null;
     return{points:total,completedParts:completed,totalParts:a.parts.length};
@@ -324,6 +326,7 @@
       id:uid("part"),
       name:a.name+" — Part 1",
       maxPoints:num(a.maxPoints)||0,
+      effect:1,
       source:a.source?{...a.source}:{type:"legacy"},
       results:{...(a.results||{})},
       createdAt:a.createdAt||now(),
@@ -485,7 +488,7 @@
       if(!confirm('"'+part.name+'" is already part of "'+a.name+'". Update only the selected students?'))return;
       part.name=partName;part.maxPoints=maxPoints;part.updatedAt=now();
     }else{
-      part={id:uid("part"),name:partName,maxPoints,source:{type:"omaabitti",reviewPath:detected.reviewPath},results:{},createdAt:now(),updatedAt:now()};
+      part={id:uid("part"),name:partName,maxPoints,effect:1,source:{type:"omaabitti",reviewPath:detected.reviewPath},results:{},createdAt:now(),updatedAt:now()};
       parts.push(part);
     }
     const stats=importSelectedIntoResults(c,part.results,selected,existingOnly,detected);
@@ -719,6 +722,8 @@
   .aa-score{cursor:pointer;text-decoration:underline dotted}.aa-card{border:1px solid #dde4e0;background:#fafcfb;border-radius:9px;padding:9px;margin-bottom:8px}.aa-card h3{margin:0 0 7px;font-size:14px}.aa-area{width:100%;min-height:170px;font-family:ui-monospace,Consolas,monospace}
   .aa-mini{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:6px;align-items:center;padding:6px 2px;border-bottom:1px solid #edf1ef}.aa-mini-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.aa-empty{text-align:center;color:#6a7871;padding:25px}\n  .aa-modal-overlay{position:fixed;inset:0;z-index:2147483647;background:#0007;display:flex;align-items:center;justify-content:center;padding:18px}\n  .aa-modal{width:min(920px,96vw);max-height:90vh;display:flex;flex-direction:column;background:#fff;color:#172026;border:1px solid #87958f;border-radius:10px;box-shadow:0 18px 60px #0006;overflow:hidden}\n  .aa-modal-head{padding:10px 12px;font-weight:800;border-bottom:1px solid #dde4e0;background:#f5f8f6}.aa-modal-body{padding:10px 12px;overflow:auto}.aa-modal-foot{padding:9px 12px;display:flex;justify-content:flex-end;gap:6px;border-top:1px solid #dde4e0;background:#fafcfb}\n  .aa-import-table td,.aa-import-table th{white-space:normal}.aa-row-disabled{opacity:.48}.aa-result-input{width:85px}
   .aa-destination-options{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px;margin-top:10px}.aa-destination-card{display:flex;flex-direction:column;gap:4px;text-align:left;border:1px solid #bbc8c2;border-radius:9px;background:#fff;color:#172026;padding:12px;cursor:pointer}.aa-destination-card:hover{background:#f5f8f6;border-color:#7f938a}.aa-destination-card strong{font-size:13px}.aa-destination-card span{font-size:11px;color:#6a7871}
+  #aa-grading-manager{margin:10px 0 14px;border:1px solid #aebbb5;border-radius:8px;background:#fff;color:#172026;font:12px system-ui,-apple-system,Segoe UI,sans-serif;overflow:hidden}.aa-manager-bar{display:flex;align-items:center;gap:7px;flex-wrap:wrap;padding:8px;background:#f5f8f6;border-bottom:1px solid #d7dfdb}.aa-manager-table{width:100%;border-collapse:collapse}.aa-manager-table th,.aa-manager-table td{padding:7px 8px;border-bottom:1px solid #e1e6e3;text-align:left;vertical-align:middle}.aa-manager-table th{background:#fafcfb}.aa-manager-exam{min-width:260px;font-weight:600}.aa-manager-select{min-width:110px}.aa-manager-select .aa-batch-check{margin-right:7px}.aa-manager-courses{min-width:280px}.aa-course-chip{display:inline-block;margin:2px 5px 2px 0;padding:4px 7px;border:1px solid #9dafaa;border-radius:999px;background:#f7faf8;color:#24362f;cursor:pointer;font-size:11px}.aa-course-chip:hover{background:#edf4f0}.aa-placement-table{margin-top:10px}
+
   #aa-grading-batchbar{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin:10px 0;padding:9px;border:1px solid #9eaaa4;border-radius:8px;background:#f5f8f6;color:#172026;font:12px system-ui,-apple-system,Segoe UI,sans-serif}#aa-grading-batchbar .aa-batch-hint{flex:1 1 320px;color:#53615a}.aa-batch-col{width:120px;min-width:120px;text-align:center!important}.aa-batch-cell{vertical-align:middle}.aa-batch-check{margin-right:6px}.aa-batch-group{width:48px;padding:3px 5px;border:1px solid #aebbb5;border-radius:5px;text-transform:uppercase}.aa-batch-head .aa-batch-sub{font-size:10px;font-weight:400;color:#66746d}\n  `);
 
   let open=db.settings.panelOpen==null?IS_ABITTI:!!db.settings.panelOpen;
@@ -1028,6 +1033,69 @@
     return index<letters.length?letters[index]:"G"+(index+1);
   }
 
+  function placementsForReviewPath(reviewPath){
+    const out=[];
+    for(const c of Object.values(db.courses)){
+      for(const a of Object.values(c.assessments||{})){
+        if(a.source?.reviewPath===reviewPath)out.push({course:c,assessment:a,part:null});
+        for(const p of a.parts||[])if(p.source?.reviewPath===reviewPath)out.push({course:c,assessment:a,part:p});
+      }
+    }
+    return out;
+  }
+
+  function placementEffect(x){
+    return x.part?partEffect(x.part):1;
+  }
+
+  function editExamPlacements(reviewPath,title){
+    const placements=placementsForReviewPath(reviewPath);
+    if(!placements.length)return alert("This exam has not been added to any course yet.");
+
+    const overlay=document.createElement("div");overlay.className="aa-modal-overlay";
+    const modal=document.createElement("div");modal.className="aa-modal";
+    const head=document.createElement("div");head.className="aa-modal-head";head.textContent="Course settings · "+title;
+    const body=document.createElement("div");body.className="aa-modal-body";
+    const note=document.createElement("div");note.className="aa-muted aa-small";
+    note.textContent="Weight is the course-grade weight of the assessment. Effect controls this exam's relative contribution inside a multi-part assessment (1 = normal, 0.5 = half, 2 = double).";
+    body.appendChild(note);
+
+    const table=document.createElement("table");table.className="aa-table aa-placement-table";
+    table.innerHTML="<thead><tr><th>Course</th><th>Assessment</th><th>Weight %</th><th>Exam effect</th></tr></thead>";
+    const tbody=document.createElement("tbody");
+    const edits=[];
+
+    for(const x of placements){
+      const tr=document.createElement("tr");
+      const ctd=document.createElement("td");ctd.textContent=x.course.name;
+      const atd=document.createElement("td");atd.textContent=x.assessment.name;
+      const wtd=document.createElement("td"),etd=document.createElement("td");
+      const w=document.createElement("input");w.className="aa-input aa-result-input";w.value=x.assessment.defaultWeight??0;
+      const e=document.createElement("input");e.className="aa-input aa-result-input";e.value=placementEffect(x);e.disabled=!x.part;
+      if(!x.part)e.title="Effect only changes the balance between parts of a multi-part assessment.";
+      wtd.appendChild(w);etd.appendChild(e);tr.append(ctd,atd,wtd,etd);tbody.appendChild(tr);
+      edits.push({x,w,e});
+    }
+    table.appendChild(tbody);body.appendChild(table);
+
+    const foot=document.createElement("div");foot.className="aa-modal-foot";
+    const close=()=>overlay.remove();
+    foot.append(btn("Cancel",close),btn("Save",()=>{
+      for(const {x,w,e} of edits){
+        const weight=num(w.value);if(!(weight>=0))return alert("Invalid weight for "+x.course.name+".");
+        x.assessment.defaultWeight=weight;
+        if(x.part){
+          const effect=num(e.value);if(!(effect>=0))return alert("Invalid exam effect for "+x.course.name+".");
+          x.part.effect=effect;x.part.updatedAt=now();syncCompositeMax(x.assessment);
+        }
+        x.assessment.updatedAt=now();x.course.updatedAt=now();
+      }
+      save();close();render();setupGradingListPicker(true);
+    },"primary"));
+    modal.append(head,body,foot);overlay.appendChild(modal);document.body.appendChild(overlay);
+    overlay.onclick=ev=>{if(ev.target===overlay)close()};
+  }
+
   async function importGradingListBatch(selected,c){
     if(!selected.length)return;
     const grouped=new Map();
@@ -1094,6 +1162,7 @@
           id:uid("part"),
           name:item.title,
           maxPoints,
+          effect:1,
           source:{type:"omaabitti",reviewPath:item.reviewPath},
           results:{},
           createdAt:now(),
@@ -1125,38 +1194,16 @@
 
   function setupGradingListPicker(force=false){
     if(!IS_GRADING_LIST)return;
-    const table=document.querySelector("#held-exams");
-    if(!table)return;
+    const nativeTable=document.querySelector("#held-exams");
+    if(!nativeTable)return;
 
-    if(force){
-      document.querySelector("#aa-grading-batchbar")?.remove();
-      table.querySelectorAll(".aa-batch-col").forEach(el=>el.remove());
-      table.removeAttribute("data-aa-batch");
-    }
+    if(force)document.querySelector("#aa-grading-manager")?.remove();
 
-    const examRows=[...table.querySelectorAll("tbody tr")];
-    if(!examRows.length)return;
+    const rawRows=[...nativeTable.querySelectorAll("tbody tr")];
+    if(!rawRows.length)return;
 
-    // MutationObserver also sees ArviointiApina's own DOM changes.
-    // If the current table is already fully enhanced, do nothing.
-    const existingBar=document.querySelector("#aa-grading-batchbar");
-    const existingCells=table.querySelectorAll("tbody tr > .aa-batch-cell").length;
-    if(!force&&table.dataset.aaBatch==="1"&&existingBar&&existingCells>0)return;
-
-    const headerRow=table.querySelector("thead tr");
-    if(headerRow&&!headerRow.querySelector(".aa-batch-head")){
-      const th=document.createElement("th");
-      th.className="aa-batch-col aa-batch-head";
-      th.innerHTML="<div>Gradebook</div><div class='aa-batch-sub'>✓ + group</div>";
-      headerRow.insertBefore(th,headerRow.firstChild);
-    }
-
-    const rows=[];
-    examRows.forEach((tr,index)=>{
-      let td=tr.querySelector(":scope > .aa-batch-cell");
-
-      // Current OmaAbitti no longer always renders a visible .schoolAnonCode
-      // cell. Derive the held-exam code from the row links instead.
+    const items=[];
+    rawRows.forEach((tr,index)=>{
       const reviewLink=[...tr.querySelectorAll("a[href]")].find(a=>{
         try{return new URL(a.getAttribute("href"),location.origin).pathname.startsWith("/school/review/")}catch(_){return false}
       });
@@ -1165,9 +1212,8 @@
       });
 
       let reviewPath="";
-      if(reviewLink){
-        reviewPath=new URL(reviewLink.getAttribute("href"),location.origin).pathname;
-      }else if(gradingLink){
+      if(reviewLink)reviewPath=new URL(reviewLink.getAttribute("href"),location.origin).pathname;
+      else if(gradingLink){
         const p=new URL(gradingLink.getAttribute("href"),location.origin).pathname;
         const code=p.split("/").filter(Boolean).pop()||"";
         if(code)reviewPath="/school/review/"+encodeURIComponent(decodeURIComponent(code));
@@ -1175,67 +1221,43 @@
         const visibleCode=tr.querySelector(".schoolAnonCode")?.textContent?.trim()||"";
         if(visibleCode)reviewPath="/school/review/"+encodeURIComponent(visibleCode);
       }
-
-      // Rows without an accessible grading/review target cannot be imported.
       if(!reviewPath)return;
 
-      const title=tr.querySelector(".examName")?.textContent?.trim()
-        ||[...tr.querySelectorAll("td")].map(x=>x.textContent?.trim()||"").find(x=>x&&x.length>3&&!/^\w{1,3}\s+\d/.test(x))
-        ||"OmaAbitti exam";
-
-      if(!td){
-        td=document.createElement("td");
-        td.className="aa-batch-col aa-batch-cell";
-        const cb=document.createElement("input");
-        cb.type="checkbox";cb.className="aa-batch-check";
-        const group=document.createElement("input");
-        group.type="text";group.className="aa-batch-group";group.maxLength=8;
-        group.placeholder=nextGroupCode(index);
-        group.title="Same group code = same gradebook assessment";
-        td.append(cb,group);
-        tr.insertBefore(td,tr.firstChild);
-      }
-
-      const cb=td.querySelector(".aa-batch-check");
-      const group=td.querySelector(".aa-batch-group");
-      if(cb&&group)rows.push({tr,cb,group,title,reviewPath});
+      const title=tr.querySelector(".examName")?.textContent?.trim()||"OmaAbitti exam";
+      const date=tr.querySelector(".examDate")?.textContent?.trim()||"";
+      items.push({tr,index,title,date,reviewPath});
     });
+    if(!items.length)return;
 
-    // If React rendered the table shell before its rows/links, try again on
-    // the next mutation instead of locking the table into an empty state.
-    if(!rows.length)return;
+    const signature=items.map(x=>x.reviewPath+"|"+x.title+"|"+x.date).join("||");
+    const existing=document.querySelector("#aa-grading-manager");
+    if(!force&&existing?.dataset.signature===signature)return;
+    existing?.remove();
 
-    table.dataset.aaBatch="1";
-
-    let bar=document.querySelector("#aa-grading-batchbar");
-    if(!bar){bar=document.createElement("div");bar.id="aa-grading-batchbar"}
-    else bar.innerHTML="";
-    const title=document.createElement("strong");title.textContent="ArviointiApina";
-    const hint=document.createElement("span");hint.className="aa-batch-hint";
-    hint.textContent="Tick exams. Give exams the same group letter/code (for example A) to combine them as parts of one assessment. Leave group blank for separate assessments.";
-
+    const manager=document.createElement("div");manager.id="aa-grading-manager";manager.dataset.signature=signature;
+    const bar=document.createElement("div");bar.className="aa-manager-bar";
+    const brand=document.createElement("strong");brand.textContent="ArviointiApina";
     const courseSelect=document.createElement("select");courseSelect.className="aa-select";
     for(const crs of Object.values(db.courses).sort((a,b)=>a.name.localeCompare(b.name,"fi"))){
       const o=document.createElement("option");o.value=crs.id;o.textContent=crs.name;o.selected=crs.id===db.settings.activeCourseId;courseSelect.appendChild(o);
     }
     courseSelect.onchange=()=>{db.settings.activeCourseId=courseSelect.value;save();setupGradingListPicker(true)};
 
-    const selectAll=btn("Select all",()=>rows.forEach(r=>r.cb.checked=true));
-    const none=btn("Select none",()=>rows.forEach(r=>r.cb.checked=false));
+    const sort=document.createElement("select");sort.className="aa-select";
+    sort.innerHTML='<option value="date-desc">Date · newest</option><option value="date-asc">Date · oldest</option><option value="name-asc">Name · A–Z</option><option value="name-desc">Name · Z–A</option><option value="added">Already added first</option>';
+    sort.value=db.settings.gradingListSort||"date-desc";
+    sort.onchange=()=>{db.settings.gradingListSort=sort.value;save();draw()};
+
     const importBtn=btn("Add selected to gradebook",async()=>{
       let targetCourse=course();
       if(!targetCourse){
-        const n=prompt("Create course/class:","New course");
-        if(!n?.trim())return;
+        const n=prompt("Create course/class:","New course");if(!n?.trim())return;
         targetCourse=createCourse(n.trim());
       }
-      const selected=rows.filter(r=>r.cb.checked).map(r=>({
-        title:r.title,
-        reviewPath:r.reviewPath,
-        group:r.group.value.trim()
+      const selected=rowStates.filter(r=>r.cb.checked).map(r=>({
+        title:r.item.title,reviewPath:r.item.reviewPath,group:r.group.value.trim()
       }));
       if(!selected.length)return alert("Select at least one exam.");
-
       const summary=selected.map(x=>"• "+x.title+(x.group?" → group "+x.group.toUpperCase():" → separate assessment")).join("\n");
       if(!confirm("Add these exams to "+targetCourse.name+"?\n\n"+summary))return;
       importBtn.disabled=true;importBtn.textContent="Importing…";
@@ -1243,8 +1265,75 @@
       finally{importBtn.disabled=false;importBtn.textContent="Add selected to gradebook"}
     },"primary");
 
-    bar.append(title,hint,courseSelect,selectAll,none,importBtn);
-    table.parentElement?.insertBefore(bar,table);
+    bar.append(brand,document.createTextNode("Course:"),courseSelect,document.createTextNode("Sort:"),sort,importBtn);
+    manager.appendChild(bar);
+
+    const table=document.createElement("table");table.className="aa-manager-table";
+    table.innerHTML="<thead><tr><th>Exam</th><th>Date</th><th>Add / group</th><th>Added to courses</th></tr></thead>";
+    const tbody=document.createElement("tbody");table.appendChild(tbody);manager.appendChild(table);
+
+    const rowStates=items.map(item=>{
+      const cb=document.createElement("input");cb.type="checkbox";cb.className="aa-batch-check";
+      const group=document.createElement("input");group.type="text";group.className="aa-batch-group";group.maxLength=8;group.hidden=true;
+      const state={item,cb,group,row:null};
+      cb.onchange=()=>{
+        group.hidden=!cb.checked;
+        if(cb.checked&&!group.placeholder){
+          const selectedCount=rowStates.filter(x=>x.cb.checked).length-1;
+          group.placeholder=nextGroupCode(Math.max(0,selectedCount));
+        }
+      };
+      return state;
+    });
+
+    function draw(){
+      const mode=sort.value;
+      const sorted=[...rowStates].sort((a,b)=>{
+        if(mode==="name-asc"||mode==="name-desc"){
+          const v=a.item.title.localeCompare(b.item.title,"fi");return mode==="name-desc"?-v:v;
+        }
+        if(mode==="added"){
+          const av=placementsForReviewPath(a.item.reviewPath).length,bv=placementsForReviewPath(b.item.reviewPath).length;
+          if(av!==bv)return bv-av;
+          return a.item.title.localeCompare(b.item.title,"fi");
+        }
+        const av=a.item.date,bv=b.item.date;
+        const v=av.localeCompare(bv,"fi");return mode==="date-asc"?v:-v;
+      });
+
+      tbody.innerHTML="";
+      for(const state of sorted){
+        const item=state.item,tr=document.createElement("tr");state.row=tr;
+        const n=document.createElement("td");n.className="aa-manager-exam";n.textContent=item.title;
+        const d=document.createElement("td");d.textContent=item.date||"—";
+        const sel=document.createElement("td");sel.className="aa-manager-select";
+        sel.append(state.cb,state.group);
+
+        const courses=document.createElement("td");courses.className="aa-manager-courses";
+        const placements=placementsForReviewPath(item.reviewPath);
+        if(!placements.length){
+          const none=document.createElement("span");none.className="aa-muted";none.textContent="Not added";courses.appendChild(none);
+        }else{
+          const grouped=new Map();
+          for(const x of placements){
+            const arr=grouped.get(x.course.id)||[];arr.push(x);grouped.set(x.course.id,arr);
+          }
+          for(const arr of grouped.values()){
+            const x=arr[0],chip=document.createElement("button");chip.type="button";chip.className="aa-course-chip";
+            const effect=x.part?" · effect "+fmt(partEffect(x.part),2):"";
+            chip.textContent=x.course.name+" · "+fmt(num(x.assessment.defaultWeight)||0,1)+"% · "+x.assessment.name+effect;
+            chip.title="Edit weight / assessment effect";
+            chip.onclick=()=>editExamPlacements(item.reviewPath,item.title);
+            courses.appendChild(chip);
+          }
+        }
+
+        tr.append(n,d,sel,courses);tbody.appendChild(tr);
+      }
+    }
+
+    draw();
+    nativeTable.parentElement?.insertBefore(manager,nativeTable);
   }
 
   function chooseAssessmentDestination(c){
