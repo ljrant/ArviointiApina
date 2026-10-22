@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ArviointiApina BETA
 // @namespace    https://github.com/ljrant/ArviointiApina
-// @version      0.6.0-beta.1
+// @version      0.6.0-beta.2
 // @description  BETA: OmaAbitti + Google Forms result collector and weighted course gradebook.
 // @match        *://*/*
 // @grant        GM_getValue
@@ -1127,37 +1127,86 @@
     if(!IS_GRADING_LIST)return;
     const table=document.querySelector("#held-exams");
     if(!table)return;
+
     if(force){
       document.querySelector("#aa-grading-batchbar")?.remove();
       table.querySelectorAll(".aa-batch-col").forEach(el=>el.remove());
       table.removeAttribute("data-aa-batch");
     }
-    if(table.dataset.aaBatch==="1")return;
-    table.dataset.aaBatch="1";
+
+    const examRows=[...table.querySelectorAll("tbody tr")];
+    if(!examRows.length)return;
 
     const headerRow=table.querySelector("thead tr");
-    if(headerRow){
-      const th=document.createElement("th");th.className="aa-batch-col aa-batch-head";
+    if(headerRow&&!headerRow.querySelector(".aa-batch-head")){
+      const th=document.createElement("th");
+      th.className="aa-batch-col aa-batch-head";
       th.innerHTML="<div>Gradebook</div><div class='aa-batch-sub'>✓ + group</div>";
       headerRow.insertBefore(th,headerRow.firstChild);
     }
 
     const rows=[];
-    [...table.querySelectorAll("tbody tr")].forEach((tr,index)=>{
-      const title=tr.querySelector(".examName")?.textContent?.trim()||"OmaAbitti exam";
-      const code=tr.querySelector(".schoolAnonCode")?.textContent?.trim()||"";
-      if(!code)return;
-      const reviewPath="/school/review/"+encodeURIComponent(code);
-      const td=document.createElement("td");td.className="aa-batch-col aa-batch-cell";
-      const cb=document.createElement("input");cb.type="checkbox";cb.className="aa-batch-check";
-      const group=document.createElement("input");group.type="text";group.className="aa-batch-group";group.maxLength=8;group.placeholder=nextGroupCode(index);group.title="Same group code = same gradebook assessment";
-      td.append(cb,group);tr.insertBefore(td,tr.firstChild);
-      rows.push({tr,cb,group,title,reviewPath});
+    examRows.forEach((tr,index)=>{
+      let td=tr.querySelector(":scope > .aa-batch-cell");
+
+      // Current OmaAbitti no longer always renders a visible .schoolAnonCode
+      // cell. Derive the held-exam code from the row links instead.
+      const reviewLink=[...tr.querySelectorAll("a[href]")].find(a=>{
+        try{return new URL(a.getAttribute("href"),location.origin).pathname.startsWith("/school/review/")}catch(_){return false}
+      });
+      const gradingLink=[...tr.querySelectorAll("a[href]")].find(a=>{
+        try{return /^\/school\/grading\/[^/]+\/?$/.test(new URL(a.getAttribute("href"),location.origin).pathname)}catch(_){return false}
+      });
+
+      let reviewPath="";
+      if(reviewLink){
+        reviewPath=new URL(reviewLink.getAttribute("href"),location.origin).pathname;
+      }else if(gradingLink){
+        const p=new URL(gradingLink.getAttribute("href"),location.origin).pathname;
+        const code=p.split("/").filter(Boolean).pop()||"";
+        if(code)reviewPath="/school/review/"+encodeURIComponent(decodeURIComponent(code));
+      }else{
+        const visibleCode=tr.querySelector(".schoolAnonCode")?.textContent?.trim()||"";
+        if(visibleCode)reviewPath="/school/review/"+encodeURIComponent(visibleCode);
+      }
+
+      // Rows without an accessible grading/review target cannot be imported.
+      if(!reviewPath)return;
+
+      const title=tr.querySelector(".examName")?.textContent?.trim()
+        ||[...tr.querySelectorAll("td")].map(x=>x.textContent?.trim()||"").find(x=>x&&x.length>3&&!/^\w{1,3}\s+\d/.test(x))
+        ||"OmaAbitti exam";
+
+      if(!td){
+        td=document.createElement("td");
+        td.className="aa-batch-col aa-batch-cell";
+        const cb=document.createElement("input");
+        cb.type="checkbox";cb.className="aa-batch-check";
+        const group=document.createElement("input");
+        group.type="text";group.className="aa-batch-group";group.maxLength=8;
+        group.placeholder=nextGroupCode(index);
+        group.title="Same group code = same gradebook assessment";
+        td.append(cb,group);
+        tr.insertBefore(td,tr.firstChild);
+      }
+
+      const cb=td.querySelector(".aa-batch-check");
+      const group=td.querySelector(".aa-batch-group");
+      if(cb&&group)rows.push({tr,cb,group,title,reviewPath});
     });
 
-    const bar=document.createElement("div");bar.id="aa-grading-batchbar";
+    // If React rendered the table shell before its rows/links, try again on
+    // the next mutation instead of locking the table into an empty state.
+    if(!rows.length)return;
+
+    table.dataset.aaBatch="1";
+
+    let bar=document.querySelector("#aa-grading-batchbar");
+    if(bar)bar.remove();
+    bar=document.createElement("div");bar.id="aa-grading-batchbar";
     const title=document.createElement("strong");title.textContent="ArviointiApina";
-    const hint=document.createElement("span");hint.className="aa-batch-hint";hint.textContent="Tick exams. Give exams the same group letter/code (for example A) to combine them as parts of one assessment. Leave group blank for separate assessments.";
+    const hint=document.createElement("span");hint.className="aa-batch-hint";
+    hint.textContent="Tick exams. Give exams the same group letter/code (for example A) to combine them as parts of one assessment. Leave group blank for separate assessments.";
 
     const courseSelect=document.createElement("select");courseSelect.className="aa-select";
     for(const crs of Object.values(db.courses).sort((a,b)=>a.name.localeCompare(b.name,"fi"))){
@@ -1181,8 +1230,6 @@
       }));
       if(!selected.length)return alert("Select at least one exam.");
 
-      const groupedCounts={};
-      for(const x of selected)if(x.group){const k=x.group.toUpperCase();groupedCounts[k]=(groupedCounts[k]||0)+1}
       const summary=selected.map(x=>"• "+x.title+(x.group?" → group "+x.group.toUpperCase():" → separate assessment")).join("\n");
       if(!confirm("Add these exams to "+targetCourse.name+"?\n\n"+summary))return;
       importBtn.disabled=true;importBtn.textContent="Importing…";
