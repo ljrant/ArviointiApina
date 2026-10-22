@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ArviointiApina BETA
 // @namespace    https://github.com/ljrant/ArviointiApina
-// @version      0.5.0-beta.6
+// @version      0.5.0-beta.7
 // @description  BETA: OmaAbitti + Google Forms result collector and weighted course gradebook.
 // @match        *://*/*
 // @grant        GM_getValue
@@ -666,7 +666,8 @@
   .aa-content{flex:1;overflow:auto;padding:9px}.aa-toolbar{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:8px}.aa-muted{color:#6a7871}.aa-small{font-size:11px}.aa-table-wrap{overflow:auto}
   .aa-table{width:100%;border-collapse:collapse}.aa-table th,.aa-table td{border:1px solid #dde4e0;padding:5px 6px;white-space:nowrap;background:#fff}.aa-table th{position:sticky;top:0;background:#f4f7f5;z-index:2;text-align:left}.aa-table .student{position:sticky;left:0;z-index:1}.aa-table th.student{z-index:3}
   .aa-score{cursor:pointer;text-decoration:underline dotted}.aa-card{border:1px solid #dde4e0;background:#fafcfb;border-radius:9px;padding:9px;margin-bottom:8px}.aa-card h3{margin:0 0 7px;font-size:14px}.aa-area{width:100%;min-height:170px;font-family:ui-monospace,Consolas,monospace}
-  .aa-mini{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:6px;align-items:center;padding:6px 2px;border-bottom:1px solid #edf1ef}.aa-mini-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.aa-empty{text-align:center;color:#6a7871;padding:25px}\n  .aa-modal-overlay{position:fixed;inset:0;z-index:2147483647;background:#0007;display:flex;align-items:center;justify-content:center;padding:18px}\n  .aa-modal{width:min(920px,96vw);max-height:90vh;display:flex;flex-direction:column;background:#fff;color:#172026;border:1px solid #87958f;border-radius:10px;box-shadow:0 18px 60px #0006;overflow:hidden}\n  .aa-modal-head{padding:10px 12px;font-weight:800;border-bottom:1px solid #dde4e0;background:#f5f8f6}.aa-modal-body{padding:10px 12px;overflow:auto}.aa-modal-foot{padding:9px 12px;display:flex;justify-content:flex-end;gap:6px;border-top:1px solid #dde4e0;background:#fafcfb}\n  .aa-import-table td,.aa-import-table th{white-space:normal}.aa-row-disabled{opacity:.48}.aa-result-input{width:85px}\n  `);
+  .aa-mini{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:6px;align-items:center;padding:6px 2px;border-bottom:1px solid #edf1ef}.aa-mini-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.aa-empty{text-align:center;color:#6a7871;padding:25px}\n  .aa-modal-overlay{position:fixed;inset:0;z-index:2147483647;background:#0007;display:flex;align-items:center;justify-content:center;padding:18px}\n  .aa-modal{width:min(920px,96vw);max-height:90vh;display:flex;flex-direction:column;background:#fff;color:#172026;border:1px solid #87958f;border-radius:10px;box-shadow:0 18px 60px #0006;overflow:hidden}\n  .aa-modal-head{padding:10px 12px;font-weight:800;border-bottom:1px solid #dde4e0;background:#f5f8f6}.aa-modal-body{padding:10px 12px;overflow:auto}.aa-modal-foot{padding:9px 12px;display:flex;justify-content:flex-end;gap:6px;border-top:1px solid #dde4e0;background:#fafcfb}\n  .aa-import-table td,.aa-import-table th{white-space:normal}.aa-row-disabled{opacity:.48}.aa-result-input{width:85px}
+  .aa-destination-options{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px;margin-top:10px}.aa-destination-card{display:flex;flex-direction:column;gap:4px;text-align:left;border:1px solid #bbc8c2;border-radius:9px;background:#fff;color:#172026;padding:12px;cursor:pointer}.aa-destination-card:hover{background:#f5f8f6;border-color:#7f938a}.aa-destination-card strong{font-size:13px}.aa-destination-card span{font-size:11px;color:#6a7871}\n  `);
 
   let open=db.settings.panelOpen==null?IS_ABITTI:!!db.settings.panelOpen;
   let compact=db.settings.panelCompact==null?!IS_ABITTI:!!db.settings.panelCompact;
@@ -969,6 +970,43 @@
   }
 
 
+  function chooseAssessmentDestination(c){
+    return new Promise(resolve=>{
+      const overlay=document.createElement("div");overlay.className="aa-modal-overlay";
+      const modal=document.createElement("div");modal.className="aa-modal";
+      const head=document.createElement("div");head.className="aa-modal-head";head.textContent="Add OmaAbitti exam";
+      const body=document.createElement("div");body.className="aa-modal-body";
+      const note=document.createElement("div");note.className="aa-muted aa-small";
+      note.textContent="Choose whether this exam becomes a new assessment or another part of an existing assessment.";
+      body.appendChild(note);
+
+      const options=document.createElement("div");options.className="aa-destination-options";
+
+      const newCard=document.createElement("button");
+      newCard.type="button";newCard.className="aa-destination-card";
+      newCard.innerHTML="<strong>New assessment</strong><span>Create a separate weighted assessment for this OmaAbitti exam.</span>";
+      options.appendChild(newCard);
+
+      const close=v=>{overlay.remove();resolve(v)};
+      newCard.onclick=()=>close({type:"new"});
+
+      const assessments=Object.values(c.assessments).sort((a,b)=>a.name.localeCompare(b.name,"fi"));
+      for(const a of assessments){
+        const card=document.createElement("button");card.type="button";card.className="aa-destination-card";
+        const parts=hasParts(a)?a.parts.length:1;
+        card.innerHTML="<strong>"+esc(a.name)+"</strong><span>Add as another exam part · "+parts+" existing part"+(parts===1?"":"s")+"</span>";
+        card.onclick=()=>close({type:"existing",assessment:a});
+        options.appendChild(card);
+      }
+
+      body.appendChild(options);
+      const foot=document.createElement("div");foot.className="aa-modal-foot";
+      foot.appendChild(btn("Cancel",()=>close(null)));
+      modal.append(head,body,foot);overlay.appendChild(modal);document.body.appendChild(overlay);
+      overlay.onclick=ev=>{if(ev.target===overlay)close(null)};
+    });
+  }
+
   async function importDialog(){
     const detected=detectExam();
     if(!detected?.students.length)return alert("No OmaAbitti results detected.");
@@ -1003,22 +1041,11 @@
       return importExam(c,name.trim(),max,w,selection.selected,selection.existingOnly);
     }
 
-    const assessments=Object.values(c.assessments);
     let target=null;
-    if(assessments.length){
-      const lines=assessments.map((a,i)=>(i+1)+". "+a.name+(hasParts(a)?" ("+a.parts.length+" parts)":""));
-      const choice=prompt(
-        "How should this OmaAbitti exam be added?\n\n"+
-        "Type NEW for a new course assessment, or choose an existing assessment number to add it as another exam part.\n\n"+
-        lines.join("\n"),
-        "NEW"
-      );
-      if(choice===null)return;
-      if(choice.trim().toUpperCase()!=="NEW"){
-        const i=Number(choice)-1;
-        if(!Number.isInteger(i)||i<0||i>=assessments.length)return alert("Invalid assessment selection.");
-        target=assessments[i];
-      }
+    if(Object.keys(c.assessments).length){
+      const destination=await chooseAssessmentDestination(c);
+      if(!destination)return;
+      if(destination.type==="existing")target=destination.assessment;
     }
 
     if(target){
