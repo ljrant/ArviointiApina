@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ArviointiApina BETA
 // @namespace    https://github.com/ljrant/ArviointiApina
-// @version      0.16.2-beta.1
+// @version      0.16.3-beta.1
 // @description  BETA: OmaAbitti + Google Forms result collector and weighted course gradebook.
 // @match        *://*/*
 // @grant        GM_getValue
@@ -24,9 +24,35 @@
   "use strict";
 
   const KEY="arviointiapina_userscript_beta_v1";
-  const APP_VERSION="0.16.2-beta.1";
+  const APP_VERSION="0.16.3-beta.1";
   const APP_NAME="ArviointiApina BETA";
-  const FINNISH={"10":90,"9½":85,"9":80,"8½":75,"8":70,"7½":65,"7":60,"6½":55,"6":50,"5½":45,"5":40,"4½":30,"4":0};
+  const FINNISH={
+    "10":90,
+    "10-":87.5,
+    "9½":85,
+    "9+":82.5,
+    "9":80,
+    "9-":77.5,
+    "8½":75,
+    "8+":72.5,
+    "8":70,
+    "8-":67.5,
+    "7½":65,
+    "7+":62.5,
+    "7":60,
+    "7-":57.5,
+    "6½":55,
+    "6+":52.5,
+    "6":50,
+    "6-":47.5,
+    "5½":45,
+    "5+":42.5,
+    "5":40,
+    "5-":35,
+    "4½":30,
+    "4+":15,
+    "4":0
+  };
   const IB={"7":85,"6":70,"5":55,"4":40,"3":25,"2":10,"1":0};
   const GRADE_PRESETS={
     finnish:{name:"Finnish 4–10",system:"finnish",passGrade:"5",passThreshold:40,boundaries:{...FINNISH}},
@@ -145,6 +171,21 @@
     return out;
   }
 
+  function orderedBoundaries(boundaries){
+    const clean=validateBoundaries(boundaries);
+    return Object.fromEntries(
+      Object.entries(clean).sort((a,b)=>{
+        const diff=num(b[1])-num(a[1]);
+        if(diff!==0)return diff;
+        return String(b[0]).localeCompare(String(a[0]),"fi",{numeric:true,sensitivity:"base"});
+      })
+    );
+  }
+
+  function boundaryJson(boundaries){
+    return JSON.stringify(orderedBoundaries(boundaries),null,2);
+  }
+
   function userBoundaryPresets(){
     db.settings.boundaryPresets||={};
     return db.settings.boundaryPresets;
@@ -177,7 +218,7 @@
     userBoundaryPresets()[id]={
       id,
       name:presetName,
-      boundaries:{...clean},
+      boundaries:orderedBoundaries(clean),
       passGrade:passGrade||inferredPassGrade(clean),
       updatedAt:now(),
       createdAt:userBoundaryPresets()[id]?.createdAt||now()
@@ -335,7 +376,7 @@
         try{
           const parsed=JSON.parse(await file.text());
           const boundaries=validateBoundaries(parsed.boundaries||parsed);
-          area.value=JSON.stringify(boundaries,null,2);
+          area.value=boundaryJson(boundaries);
           preset.value="custom";
         }catch(e){alert("Could not import grade boundaries: "+e.message)}
       }));
@@ -345,8 +386,8 @@
       const refresh=()=>{
         const p=preset.value==="custom"?null:getGradePreset(preset.value);
         if(preset.value==="custom"){
-          if(!area.value.trim())area.value=JSON.stringify(GRADE_PRESETS.finnish.boundaries,null,2);
-        }else area.value=JSON.stringify(p.boundaries,null,2);
+          if(!area.value.trim())area.value=boundaryJson(GRADE_PRESETS.finnish.boundaries);
+        }else area.value=boundaryJson(p.boundaries);
         let boundaries={};
         try{boundaries=validateBoundaries(JSON.parse(area.value))}catch(_){}
         const passGrade=p?.passGrade||passGradeHint||inferredPassGrade(boundaries);
@@ -362,7 +403,7 @@
           const passGrade=p?.passGrade||passGradeHint||inferredPassGrade(boundaries);
           passGradeHint=passGrade;
           const adjusted=adjustBoundariesToPass(boundaries,passGrade,value);
-          area.value=JSON.stringify(adjusted,null,2);
+          area.value=boundaryJson(adjusted);
           preset.value="custom";
           passSlider.value=String(value);passNumber.value=String(value);
         }catch(e){alert("Could not adjust pass threshold: "+e.message)}
@@ -1894,7 +1935,7 @@
 
   function settings(parent,c){
     c.grading||={};
-    c.grading.finnishBoundaries||={...FINNISH};
+    c.grading.finnishBoundaries={...FINNISH,...(c.grading.finnishBoundaries||{})};
     c.grading.ibBoundaries||={...IB};
     c.grading.customBoundaries||={};
 
@@ -1942,7 +1983,7 @@
     const boundaryCard=document.createElement("div");boundaryCard.className="aa-card";
     boundaryCard.innerHTML="<h3>Grade boundaries</h3><div class='aa-muted aa-small'>Grade label → minimum percentage. Presets can be edited; edited presets become Custom.</div>";
     const area=document.createElement("textarea");area.className="aa-area aa-boundary-area";
-    const loadArea=()=>{area.value=JSON.stringify(currentBoundaries(c),null,2)};
+    const loadArea=()=>{area.value=boundaryJson(currentBoundaries(c))};
     loadArea();boundaryCard.appendChild(area);
 
     preset.onchange=()=>{
@@ -1987,7 +2028,7 @@
           const savedKey=saveUserBoundaryPreset(presetName,boundaries,passGrade,existingId);
           c.grading.system="custom";
           c.grading.presetKey=savedKey;
-          c.grading.customBoundaries={...boundaries};
+          c.grading.customBoundaries=orderedBoundaries(boundaries);
           c.grading.customName=presetName.trim();
           c.grading.passGrade=passGrade;
           c.updatedAt=now();save();render();
@@ -1996,7 +2037,7 @@
       renamePresetBtn,
       btn("Export boundaries",()=>{
         const activeDef=getGradePreset(c.grading.presetKey||presetForCourse(c));
-        const payload={format:"ArviointiApina-grade-boundaries-v1",name:c.grading.customName||activeDef?.name||"Custom",boundaries:currentBoundaries(c)};
+        const payload={format:"ArviointiApina-grade-boundaries-v1",name:c.grading.customName||activeDef?.name||"Custom",boundaries:orderedBoundaries(currentBoundaries(c))};
         download((c.name.replace(/[^\w-]+/g,"_")||"course")+"_grade-boundaries.json",JSON.stringify(payload,null,2),"application/json");
       }),
       btn("Import boundaries",()=>choose(".json,application/json",async file=>{
@@ -2008,7 +2049,7 @@
           if(name===null)return;
           const passGrade=inferredPassGrade(boundaries);
           const key=saveUserBoundaryPreset(name,boundaries,passGrade);
-          c.grading.system="custom";c.grading.presetKey=key;c.grading.customBoundaries={...boundaries};c.grading.customName=name.trim();c.grading.passGrade=passGrade;
+          c.grading.system="custom";c.grading.presetKey=key;c.grading.customBoundaries=orderedBoundaries(boundaries);c.grading.customName=name.trim();c.grading.passGrade=passGrade;
           c.updatedAt=now();save();render();
         }catch(e){alert("Could not import grade boundaries: "+e.message)}
       }))
