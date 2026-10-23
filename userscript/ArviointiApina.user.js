@@ -2118,6 +2118,8 @@
       const part=existingTarget.part,a=existingTarget.assessment;
       const partName=prompt("Exam part name:",part.name);if(!partName?.trim())return;
       const max=prompt((detected.maxPoints?"Maximum possible points (calculated from question maxima):":"Maximum possible points (automatic calculation failed; enter manually):"),part.maxPoints||detected.maxPoints||"");if(max===null)return;
+      const weightInput=prompt("Course-grade weight % for "+a.name+":",String(Math.max(0,num(a.defaultWeight)||0)));if(weightInput===null)return;
+      const weight=num(weightInput);if(!(weight>=0))return alert("Invalid weight.");a.defaultWeight=weight;
       const selection=await chooseImportStudents(c,detected);if(!selection)return;
       return importExamAsPart(c,a,partName.trim(),max,selection.selected,selection.existingOnly);
     }
@@ -2141,6 +2143,8 @@
     if(target){
       const partName=prompt("Exam part name:",detected.name);if(!partName?.trim())return;
       const max=prompt((detected.maxPoints?"Maximum possible points (calculated from OmaAbitti answer paper):":"Maximum possible points (automatic calculation failed; enter manually):"),detected.maxPoints||"");if(max===null)return;
+      const weightInput=prompt("Course-grade weight % for "+target.name+":",String(Math.max(0,num(target.defaultWeight)||0)));if(weightInput===null)return;
+      const weight=num(weightInput);if(!(weight>=0))return alert("Invalid weight.");target.defaultWeight=weight;
       const selection=await chooseImportStudents(c,detected);if(!selection)return;
       return importExamAsPart(c,target,partName.trim(),max,selection.selected,selection.existingOnly);
     }
