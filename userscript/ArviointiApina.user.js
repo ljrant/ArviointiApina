@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ArviointiApina BETA
 // @namespace    https://github.com/ljrant/ArviointiApina
-// @version      0.16.4-beta.1
+// @version      0.16.5-beta.1
 // @description  BETA: OmaAbitti + Google Forms result collector and weighted course gradebook.
 // @match        *://*/*
 // @grant        GM_getValue
@@ -24,7 +24,7 @@
   "use strict";
 
   const KEY="arviointiapina_userscript_beta_v1";
-  const APP_VERSION="0.16.4-beta.1";
+  const APP_VERSION="0.16.5-beta.1";
   const APP_NAME="ArviointiApina BETA";
   const FINNISH={
     "10":90,
@@ -1184,7 +1184,7 @@
   .aa-score{cursor:pointer;text-decoration:underline dotted}.aa-card{border:1px solid #dde4e0;background:#fafcfb;border-radius:9px;padding:9px;margin-bottom:8px}.aa-card h3{margin:0 0 7px;font-size:14px}.aa-area{width:100%;min-height:170px;font-family:ui-monospace,Consolas,monospace}
   .aa-mini{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:6px;align-items:center;padding:6px 2px;border-bottom:1px solid #edf1ef}.aa-mini-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.aa-empty{text-align:center;color:#6a7871;padding:25px}\n  .aa-modal-overlay{position:fixed;inset:0;z-index:2147483647;background:#0007;display:flex;align-items:center;justify-content:center;padding:18px}\n  .aa-modal{width:min(920px,96vw);max-height:90vh;display:flex;flex-direction:column;background:#fff;color:#172026;border:1px solid #87958f;border-radius:10px;box-shadow:0 18px 60px #0006;overflow:hidden}\n  .aa-modal-head{padding:10px 12px;font-weight:800;border-bottom:1px solid #dde4e0;background:#f5f8f6}.aa-modal-body{padding:10px 12px;overflow:auto}.aa-modal-foot{padding:9px 12px;display:flex;justify-content:flex-end;gap:6px;border-top:1px solid #dde4e0;background:#fafcfb}\n  .aa-import-table td,.aa-import-table th{white-space:normal}.aa-row-disabled{opacity:.48}.aa-result-input{width:85px}
   .aa-destination-options{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px;margin-top:10px}.aa-destination-card{display:flex;flex-direction:column;gap:4px;text-align:left;border:1px solid #bbc8c2;border-radius:9px;background:#fff;color:#172026;padding:12px;cursor:pointer}.aa-destination-card:hover{background:#f5f8f6;border-color:#7f938a}.aa-destination-card strong{font-size:13px}.aa-destination-card span{font-size:11px;color:#6a7871}
-  #aa-grading-manager{margin:10px 0 14px;border:1px solid #aebbb5;border-radius:8px;background:#fff;color:#172026;font:12px system-ui,-apple-system,Segoe UI,sans-serif;overflow:hidden}.aa-manager-bar{display:flex;align-items:center;gap:7px;flex-wrap:wrap;padding:8px;background:#f5f8f6;border-bottom:1px solid #d7dfdb}.aa-manager-table{width:100%;border-collapse:collapse}.aa-manager-table th,.aa-manager-table td{padding:7px 8px;border-bottom:1px solid #e1e6e3;text-align:left;vertical-align:middle}.aa-manager-table th{background:#fafcfb}.aa-manager-exam{min-width:260px;font-weight:600}.aa-manager-select{min-width:210px;white-space:nowrap}.aa-manager-select .aa-batch-check{margin-right:8px}.aa-add-group-select{min-width:145px}.aa-manager-select .aa-batch-check{margin-right:7px}.aa-manager-courses{min-width:280px}.aa-course-chip{display:inline-block;margin:2px 5px 2px 0;padding:4px 7px;border:1px solid #9dafaa;border-radius:999px;background:#f7faf8;color:#24362f;cursor:pointer;font-size:11px}.aa-course-chip:hover{background:#edf4f0}.aa-placement-table{margin-top:10px}.aa-placement-card{margin-top:10px}.aa-placement-title{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:8px}.aa-placement-title label{display:flex;align-items:center;gap:6px}.aa-sortable-head{cursor:pointer;user-select:none}.aa-sortable-head:hover{background:#eef4f1!important}.aa-sortable-head.active{font-weight:800}.aa-sort-arrow{font-size:10px;white-space:nowrap}.aa-gradebook-search{min-width:190px}.aa-gradebook-head-row{display:flex;align-items:center;justify-content:space-between;gap:5px}.aa-sort-icon{border:0;background:transparent;color:#52635b;cursor:pointer;font-size:10px;padding:1px 2px;line-height:1}.aa-sort-icon:hover{color:#111}.aa-table th.active-sort{background:#eef4f1}.aa-header-weight{width:52px;margin:2px 3px 0;padding:2px 3px;border:1px solid #b7c4be;border-radius:4px;font-size:10px}.aa-student-weight-wrap{display:flex;align-items:center;gap:3px;margin-top:3px}.aa-student-weight{width:48px;padding:2px 3px;border:1px solid #c6d0cb;border-radius:4px;font-size:10px}.aa-exam-name-filter{min-width:180px}.aa-direct-suggestions{margin-top:10px;display:flex;flex-direction:column;gap:6px}.aa-direct-suggestion{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px;border:1px solid #dde4e0;border-radius:7px;background:#fafcfb}.aa-student-picker-scroll{max-height:55vh;overflow:auto}.aa-modal-wide{width:min(1100px,94vw)!important}.aa-assessment-chip{display:inline-flex;align-items:center;gap:4px;margin:2px 5px 2px 0;padding:3px 5px;border:1px solid #ccd7d2;border-radius:999px;background:#f7faf8}.aa-assessment-chip button{border:0;background:transparent;color:#a33;cursor:pointer;font-weight:700;padding:0 2px}.aa-removed-student{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #e5ebe8}.aa-removed-student>span{flex:1}.aa-course-form{display:grid;gap:10px}.aa-pass-row{display:flex;align-items:center;gap:8px}.aa-pass-row input[type=range]{flex:1}.aa-pass-number{width:72px}.aa-pass-settings{display:grid;gap:5px;max-width:420px}.aa-add-exam-scroll{max-height:55vh;overflow:auto}.aa-add-exam-table th{position:sticky;top:0;background:#fff;z-index:1}.aa-manager-body[hidden]{display:none!important}.aa-abitti-link{color:#1765c1;text-decoration:none}.aa-abitti-link:hover{text-decoration:underline}.aa-source-links,.aa-answer-links{margin-top:3px;line-height:1.25}.aa-modal-small{width:min(520px,94vw)!important}.aa-score-edit-form{display:grid;gap:10px}.aa-score-edit-form label{display:grid;gap:5px;font-weight:600}.aa-score-edit-links{font-size:12px}.aa-part-edit-table td:last-child{white-space:nowrap}.aa-grade-preview-wrap{margin-top:8px;overflow:auto}.aa-grade-preview-table{max-width:520px}.aa-grade-preview-table td:nth-child(2),.aa-grade-preview-table td:nth-child(3){white-space:nowrap}.aa-grade-preview-grid{display:grid;grid-template-columns:minmax(300px,.8fr) minmax(380px,1.2fr);gap:10px;align-items:start}.aa-student-grade-preview-wrap{margin-top:8px;max-height:430px;overflow:auto}.aa-student-grade-preview-table th{position:sticky;top:0;background:#fff;z-index:1}.aa-preview-grade{font-weight:800}@media(max-width:900px){.aa-grade-preview-grid{grid-template-columns:1fr}}.aa-course-swatch{width:11px;height:11px;border-radius:3px;display:inline-block;flex:0 0 auto}.aa-brand{display:flex;align-items:center;gap:6px}.aa-head{align-items:center}.aa-head-group,.aa-head-actions{display:flex;align-items:center;gap:5px}.aa-head-actions{margin-left:auto}.aa-head-label{font-size:10px;color:#69776f;font-weight:700;text-transform:uppercase;letter-spacing:.04em}.aa-course-select{min-width:145px}.aa-course-badge{display:inline-flex;align-items:center;padding:4px 8px;border-radius:999px;font-size:11px;font-weight:700}.aa-course-color-row{display:flex;align-items:center;gap:8px}.aa-course-color-input{width:46px;height:30px;padding:1px;border:1px solid #bbc8c2;border-radius:6px;background:#fff}.aa-color-setting{display:flex;align-items:center;gap:8px}.aa-manager-control{display:inline-flex;align-items:center;gap:5px}.aa-manager-filter{flex:1;min-width:180px}.aa-manager-filter .aa-exam-name-filter{width:100%}.aa-course-chip{font-weight:650}.aa-manager-toggle{margin-left:auto;border:0;background:transparent;color:#2f4038;cursor:pointer;font-size:14px;line-height:1;padding:5px 7px;border-radius:5px}.aa-manager-toggle:hover{background:#e7eeea}.aa-manager-year{order:1}.aa-manager-filter{order:2;flex:1 1 220px}.aa-manager-course{order:3}.aa-manager-bar>.aa-btn.primary{order:4}.aa-manager-toggle{order:5}.aa-manager-bar>strong{order:0;margin-right:4px}.aa-course-form label{display:grid;gap:5px;font-weight:600}.aa-boundary-area{min-height:180px;font-family:ui-monospace,SFMono-Regular,Consolas,monospace!important}
+  #aa-grading-manager{margin:10px 0 14px;border:1px solid #aebbb5;border-radius:8px;background:#fff;color:#172026;font:12px system-ui,-apple-system,Segoe UI,sans-serif;overflow:hidden}.aa-manager-bar{display:flex;align-items:center;gap:7px;flex-wrap:wrap;padding:8px;background:#f5f8f6;border-bottom:1px solid #d7dfdb}.aa-manager-table{width:100%;border-collapse:collapse}.aa-manager-table th,.aa-manager-table td{padding:7px 8px;border-bottom:1px solid #e1e6e3;text-align:left;vertical-align:middle}.aa-manager-table th{background:#fafcfb}.aa-manager-exam{min-width:260px;font-weight:600}.aa-manager-select{min-width:210px;white-space:nowrap}.aa-manager-select .aa-batch-check{margin-right:8px}.aa-add-group-select{min-width:145px}.aa-manager-select .aa-batch-check{margin-right:7px}.aa-manager-courses{min-width:280px}.aa-course-chip{display:inline-block;margin:2px 5px 2px 0;padding:4px 7px;border:1px solid #9dafaa;border-radius:999px;background:#f7faf8;color:#24362f;cursor:pointer;font-size:11px}.aa-course-chip:hover{background:#edf4f0}.aa-placement-table{margin-top:10px}.aa-placement-card{margin-top:10px}.aa-placement-title{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:8px}.aa-placement-title label{display:flex;align-items:center;gap:6px}.aa-sortable-head{cursor:pointer;user-select:none}.aa-sortable-head:hover{background:#eef4f1!important}.aa-sortable-head.active{font-weight:800}.aa-sort-arrow{font-size:10px;white-space:nowrap}.aa-gradebook-search{min-width:190px}.aa-gradebook-table{table-layout:fixed;min-width:max-content}.aa-gradebook-table th.student,.aa-gradebook-table td.student{width:180px;min-width:180px;max-width:180px}.aa-gradebook-table th[data-sort-key^="assessment:"],.aa-gradebook-table td.aa-gradebook-assessment-cell{width:210px;min-width:210px;max-width:210px}.aa-gradebook-table th[data-sort-key="weighted"]{width:82px;min-width:82px}.aa-gradebook-table th[data-sort-key="grade"]{width:70px;min-width:70px}.aa-gradebook-title{display:block;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:700}.aa-gradebook-header-meta{display:flex;align-items:center;gap:5px;white-space:nowrap;overflow:hidden}.aa-gradebook-header-meta .aa-source-links{min-width:0;overflow:hidden;text-overflow:ellipsis}.aa-header-weight-wrap{display:inline-flex;align-items:center;gap:2px;flex:0 0 auto}.aa-gradebook-cell-line{display:flex;align-items:center;gap:6px;min-width:0;white-space:nowrap;overflow:hidden}.aa-gradebook-cell-line .aa-score{flex:0 0 auto}.aa-gradebook-cell-line .aa-answer-links{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.aa-gradebook-cell-line .aa-student-weight-wrap{flex:0 0 auto;margin-top:0;margin-left:auto}.aa-gradebook-head-row{display:flex;align-items:center;justify-content:space-between;gap:5px}.aa-sort-icon{border:0;background:transparent;color:#52635b;cursor:pointer;font-size:10px;padding:1px 2px;line-height:1}.aa-sort-icon:hover{color:#111}.aa-table th.active-sort{background:#eef4f1}.aa-header-weight{width:52px;margin:2px 3px 0;padding:2px 3px;border:1px solid #b7c4be;border-radius:4px;font-size:10px}.aa-student-weight-wrap{display:flex;align-items:center;gap:3px;margin-top:3px}.aa-student-weight{width:48px;padding:2px 3px;border:1px solid #c6d0cb;border-radius:4px;font-size:10px}.aa-exam-name-filter{min-width:180px}.aa-direct-suggestions{margin-top:10px;display:flex;flex-direction:column;gap:6px}.aa-direct-suggestion{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px;border:1px solid #dde4e0;border-radius:7px;background:#fafcfb}.aa-student-picker-scroll{max-height:55vh;overflow:auto}.aa-modal-wide{width:min(1100px,94vw)!important}.aa-assessment-chip{display:inline-flex;align-items:center;gap:4px;margin:2px 5px 2px 0;padding:3px 5px;border:1px solid #ccd7d2;border-radius:999px;background:#f7faf8}.aa-assessment-chip button{border:0;background:transparent;color:#a33;cursor:pointer;font-weight:700;padding:0 2px}.aa-removed-student{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #e5ebe8}.aa-removed-student>span{flex:1}.aa-course-form{display:grid;gap:10px}.aa-pass-row{display:flex;align-items:center;gap:8px}.aa-pass-row input[type=range]{flex:1}.aa-pass-number{width:72px}.aa-pass-settings{display:grid;gap:5px;max-width:420px}.aa-add-exam-scroll{max-height:55vh;overflow:auto}.aa-add-exam-table th{position:sticky;top:0;background:#fff;z-index:1}.aa-manager-body[hidden]{display:none!important}.aa-abitti-link{color:#1765c1;text-decoration:none}.aa-abitti-link:hover{text-decoration:underline}.aa-source-links,.aa-answer-links{line-height:1.25}.aa-modal-small{width:min(520px,94vw)!important}.aa-score-edit-form{display:grid;gap:10px}.aa-score-edit-form label{display:grid;gap:5px;font-weight:600}.aa-score-edit-links{font-size:12px}.aa-part-edit-table td:last-child{white-space:nowrap}.aa-grade-preview-wrap{margin-top:8px;overflow:auto}.aa-grade-preview-table{max-width:520px}.aa-grade-preview-table td:nth-child(2),.aa-grade-preview-table td:nth-child(3){white-space:nowrap}.aa-grade-preview-grid{display:grid;grid-template-columns:minmax(300px,.8fr) minmax(380px,1.2fr);gap:10px;align-items:start}.aa-student-grade-preview-wrap{margin-top:8px;max-height:430px;overflow:auto}.aa-student-grade-preview-table th{position:sticky;top:0;background:#fff;z-index:1}.aa-preview-grade{font-weight:800}@media(max-width:900px){.aa-grade-preview-grid{grid-template-columns:1fr}}.aa-course-swatch{width:11px;height:11px;border-radius:3px;display:inline-block;flex:0 0 auto}.aa-brand{display:flex;align-items:center;gap:6px}.aa-head{align-items:center}.aa-head-group,.aa-head-actions{display:flex;align-items:center;gap:5px}.aa-head-actions{margin-left:auto}.aa-head-label{font-size:10px;color:#69776f;font-weight:700;text-transform:uppercase;letter-spacing:.04em}.aa-course-select{min-width:145px}.aa-course-badge{display:inline-flex;align-items:center;padding:4px 8px;border-radius:999px;font-size:11px;font-weight:700}.aa-course-color-row{display:flex;align-items:center;gap:8px}.aa-course-color-input{width:46px;height:30px;padding:1px;border:1px solid #bbc8c2;border-radius:6px;background:#fff}.aa-color-setting{display:flex;align-items:center;gap:8px}.aa-manager-control{display:inline-flex;align-items:center;gap:5px}.aa-manager-filter{flex:1;min-width:180px}.aa-manager-filter .aa-exam-name-filter{width:100%}.aa-course-chip{font-weight:650}.aa-manager-toggle{margin-left:auto;border:0;background:transparent;color:#2f4038;cursor:pointer;font-size:14px;line-height:1;padding:5px 7px;border-radius:5px}.aa-manager-toggle:hover{background:#e7eeea}.aa-manager-year{order:1}.aa-manager-filter{order:2;flex:1 1 220px}.aa-manager-course{order:3}.aa-manager-bar>.aa-btn.primary{order:4}.aa-manager-toggle{order:5}.aa-manager-bar>strong{order:0;margin-right:4px}.aa-course-form label{display:grid;gap:5px;font-weight:600}.aa-boundary-area{min-height:180px;font-family:ui-monospace,SFMono-Regular,Consolas,monospace!important}
 
   #aa-grading-batchbar{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin:10px 0;padding:9px;border:1px solid #9eaaa4;border-radius:8px;background:#f5f8f6;color:#172026;font:12px system-ui,-apple-system,Segoe UI,sans-serif}#aa-grading-batchbar .aa-batch-hint{flex:1 1 320px;color:#53615a}.aa-batch-col{width:120px;min-width:120px;text-align:center!important}.aa-batch-cell{vertical-align:middle}.aa-batch-check{margin-right:6px}.aa-batch-group{width:48px;padding:3px 5px;border:1px solid #aebbb5;border-radius:5px;text-transform:uppercase}.aa-batch-head .aa-batch-sub{font-size:10px;font-weight:400;color:#66746d}\n  `);
 
@@ -1519,13 +1519,24 @@
     for(const a of as){
       const th=document.createElement("th");th.dataset.sortKey="assessment:"+a.id;
       const row=document.createElement("div");row.className="aa-gradebook-head-row";
-      const title=document.createElement("span");title.textContent=a.name;
+      const title=document.createElement("span");title.className="aa-gradebook-title";title.textContent=a.name;title.title=a.name;
       const icon=document.createElement("button");icon.type="button";icon.className="aa-sort-icon";icon.title="Sort by "+a.name+" result";
       icon.onclick=e=>{e.stopPropagation();const key="assessment:"+a.id;if(sortKey===key)sortDir=sortDir==="asc"?"desc":"asc";else{sortKey=key;sortDir="desc"}draw()};
       row.append(title,icon);th.appendChild(row);
 
-      const meta=document.createElement("div");meta.className="aa-muted aa-small";
-      meta.append(document.createTextNode("max "+fmt(effectiveMax(a),2)+(hasParts(a)?" · "+a.parts.length+" parts · ":" · ")));
+      const compactMeta=document.createElement("div");compactMeta.className="aa-gradebook-header-meta aa-small";
+      const maxText=document.createElement("span");maxText.className="aa-muted";maxText.textContent="max "+fmt(effectiveMax(a),2)+(hasParts(a)?" · "+a.parts.length+"p":"");
+      compactMeta.appendChild(maxText);
+
+      const sourceLinks=document.createElement("span");sourceLinks.className="aa-source-links";
+      if(hasParts(a)){
+        a.parts.forEach((p,i)=>{const link=sourceLink(p.source,"P"+(i+1)+" ↗");if(link){if(sourceLinks.childNodes.length)sourceLinks.appendChild(document.createTextNode(" · "));sourceLinks.appendChild(link)}});
+      }else{
+        const link=sourceLink(a.source,"Exam ↗");if(link)sourceLinks.appendChild(link);
+      }
+      if(sourceLinks.childNodes.length)compactMeta.appendChild(sourceLinks);
+
+      const weightWrap=document.createElement("span");weightWrap.className="aa-header-weight-wrap";
       const weight=document.createElement("input");weight.className="aa-header-weight";weight.type="number";weight.min="0";weight.step="0.1";weight.value=a.defaultWeight;
       weight.title="Default course weight %. Individual student overrides still take priority.";
       weight.onchange=()=>{
@@ -1533,14 +1544,8 @@
         if(!(v>=0)){alert("Invalid weight.");weight.value=a.defaultWeight;return}
         a.defaultWeight=v;a.updatedAt=now();c.updatedAt=now();save();draw();
       };
-      meta.append(weight,document.createTextNode("%"));th.appendChild(meta);
-      const sourceLinks=document.createElement("div");sourceLinks.className="aa-source-links aa-small";
-      if(hasParts(a)){
-        a.parts.forEach((p,i)=>{const link=sourceLink(p.source,"P"+(i+1)+" ↗");if(link){if(sourceLinks.childNodes.length)sourceLinks.appendChild(document.createTextNode(" · "));sourceLinks.appendChild(link)}});
-      }else{
-        const link=sourceLink(a.source,"Exam ↗");if(link)sourceLinks.appendChild(link);
-      }
-      if(sourceLinks.childNodes.length)th.appendChild(sourceLinks);
+      weightWrap.append(weight,document.createTextNode("%"));compactMeta.appendChild(weightWrap);
+      th.appendChild(compactMeta);
       hr.appendChild(th);
     }
 
@@ -1587,26 +1592,26 @@
       for(const st of ss){
         const x=calc(c,st),tr=document.createElement("tr"),name=document.createElement("td");name.className="student";name.textContent=st.canonicalName;tr.appendChild(name);
         for(const a of as){
-          const td=document.createElement("td"),r=effectiveResult(a,st.id),sp=document.createElement("span");sp.className="aa-score";
-          sp.textContent=r?fmt(num(r.points),2)+"/"+fmt(effectiveMax(a),2)+(hasParts(a)?" ("+(r.completedParts||0)+"/"+a.parts.length+" parts)":""):"—";
-          sp.onclick=()=>hasParts(a)?editCompositeStudentResults(c,st,a):editResult(c,st,a);td.appendChild(sp);
+          const td=document.createElement("td");td.className="aa-gradebook-assessment-cell";
+          const r=effectiveResult(a,st.id),sp=document.createElement("span");sp.className="aa-score";
+          sp.textContent=r?fmt(num(r.points),2)+"/"+fmt(effectiveMax(a),2)+(hasParts(a)?" ("+(r.completedParts||0)+"/"+a.parts.length+")":""):"—";
+          sp.title="Edit score";sp.onclick=()=>hasParts(a)?editCompositeStudentResults(c,st,a):editResult(c,st,a);
 
-          const answerLinks=document.createElement("div");answerLinks.className="aa-answer-links aa-small";
+          const answerLinks=document.createElement("span");answerLinks.className="aa-answer-links aa-small";
           if(hasParts(a)){
             a.parts.forEach((p,i)=>{
               const pr=p.results?.[st.id],href=answerUrlForResult(p.source,pr);
               if(!href)return;
-              const link=document.createElement("a");link.className="aa-abitti-link";link.href=href;link.target="_blank";link.rel="noopener";link.textContent="P"+(i+1)+" answer ↗";
+              const link=document.createElement("a");link.className="aa-abitti-link";link.href=href;link.target="_blank";link.rel="noopener";link.textContent="P"+(i+1)+" ↗";link.title="Open part "+(i+1)+" answer";
               if(answerLinks.childNodes.length)answerLinks.appendChild(document.createTextNode(" · "));
               answerLinks.appendChild(link);
             });
           }else{
             const href=answerUrlForResult(a.source,a.results?.[st.id]);
-            if(href){const link=document.createElement("a");link.className="aa-abitti-link";link.href=href;link.target="_blank";link.rel="noopener";link.textContent="Answer ↗";answerLinks.appendChild(link)}
+            if(href){const link=document.createElement("a");link.className="aa-abitti-link";link.href=href;link.target="_blank";link.rel="noopener";link.textContent="Answer ↗";link.title="Open student answer";answerLinks.appendChild(link)}
           }
-          if(answerLinks.childNodes.length)td.appendChild(answerLinks);
 
-          const weightWrap=document.createElement("div");weightWrap.className="aa-student-weight-wrap";
+          const weightWrap=document.createElement("span");weightWrap.className="aa-student-weight-wrap";
           const label=document.createElement("span");label.className="aa-muted aa-small";label.textContent="w";
           const wi=document.createElement("input");wi.className="aa-student-weight";wi.type="number";wi.min="0";wi.step="0.1";
           const hasOverride=Object.prototype.hasOwnProperty.call(st.weightingOverrides||{},a.id);
@@ -1623,7 +1628,13 @@
             }
             st.updatedAt=now();save();draw();
           };
-          weightWrap.append(label,wi);td.appendChild(weightWrap);tr.appendChild(td);
+          weightWrap.append(label,wi);
+
+          const line=document.createElement("div");line.className="aa-gradebook-cell-line";
+          line.appendChild(sp);
+          if(answerLinks.childNodes.length)line.appendChild(answerLinks);
+          line.appendChild(weightWrap);
+          td.appendChild(line);tr.appendChild(td);
         }
         const pct=document.createElement("td");pct.textContent=x.pct==null?"—":fmt(x.pct,1)+"%";tr.appendChild(pct);
         const gt=document.createElement("td");gt.appendChild(btn(x.grade||"—",async()=>{if(x.grade)await navigator.clipboard.writeText(x.grade)}));tr.appendChild(gt);
