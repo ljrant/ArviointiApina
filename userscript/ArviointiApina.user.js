@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         ArviointiApina BETA 0.11.0-beta.1
+// @name         ArviointiApina BETA
 // @namespace    https://github.com/ljrant/ArviointiApina
-// @version      0.11.0-beta.1
+// @version      0.12.0-beta.1
 // @description  BETA: OmaAbitti + Google Forms result collector and weighted course gradebook.
 // @match        *://*/*
 // @grant        GM_getValue
@@ -24,10 +24,16 @@
   "use strict";
 
   const KEY="arviointiapina_userscript_beta_v1";
-  const APP_VERSION="0.11.0-beta.1";
-  const APP_NAME="ArviointiApina BETA "+APP_VERSION;
+  const APP_VERSION="0.12.0-beta.1";
+  const APP_NAME="ArviointiApina BETA";
   const FINNISH={"10":90,"9½":85,"9":80,"8½":75,"8":70,"7½":65,"7":60,"6½":55,"6":50,"5½":45,"5":40,"4½":30,"4":0};
   const IB={"7":85,"6":70,"5":55,"4":40,"3":25,"2":10,"1":0};
+  const GRADE_PRESETS={
+    finnish:{name:"Finnish 4–10",system:"finnish",boundaries:{...FINNISH}},
+    ib:{name:"IB 1–7",system:"ib",boundaries:{...IB}},
+    af:{name:"A–F (90/80/70/60/50)",system:"custom",boundaries:{"A":90,"B":80,"C":70,"D":60,"E":50,"F":0}},
+    pass50:{name:"Pass / Fail (50%)",system:"custom",boundaries:{"Pass":50,"Fail":0}}
+  };
   const IS_ABITTI=location.hostname==="oma.abitti.fi"&&location.pathname.startsWith("/school/review/");
   const IS_GRADING_LIST=location.hostname==="oma.abitti.fi"&&/^\/school\/grading\/?$/.test(location.pathname);
   const IS_GOOGLE_FORMS=location.hostname==="docs.google.com"&&location.pathname.includes("/forms/");
@@ -72,10 +78,148 @@
   const save=()=>GM_setValue(KEY,JSON.stringify(db));
   const course=()=>db.courses[db.settings.activeCourseId]||null;
 
-  function createCourse(name){
+  function validateBoundaries(boundaries){
+    if(!boundaries||typeof boundaries!=="object"||Array.isArray(boundaries))throw new Error("Grade boundaries must be an object.");
+    const entries=Object.entries(boundaries);
+    if(!entries.length)throw new Error("At least one grade boundary is required.");
+    const out={};
+    for(const [grade,threshold] of entries){
+      const label=String(grade||"").trim(),value=num(threshold);
+      if(!label)throw new Error("Every grade needs a label.");
+      if(!Number.isFinite(value)||value<0||value>100)throw new Error("Every threshold must be between 0 and 100.");
+      out[label]=value;
+    }
+    return out;
+  }
+
+  function presetForCourse(c){
+    const g=c?.grading||{};
+    for(const [key,preset] of Object.entries(GRADE_PRESETS)){
+      if(g.system!==preset.system)continue;
+      const current=JSON.stringify(currentBoundaries(c));
+      if(current===JSON.stringify(preset.boundaries))return key;
+    }
+    return "custom";
+  }
+
+  function currentBoundaries(c){
+    const g=c?.grading||{};
+    if(g.system==="ib")return g.ibBoundaries||IB;
+    if(g.system==="custom")return g.customBoundaries||{};
+    return g.finnishBoundaries||FINNISH;
+  }
+
+  function applyGradePreset(c,key){
+    const preset=GRADE_PRESETS[key];
+    if(!preset)return;
+    c.grading.system=preset.system;
+    c.grading.presetKey=key;
+    if(preset.system==="finnish")c.grading.finnishBoundaries={...preset.boundaries};
+    else if(preset.system==="ib")c.grading.ibBoundaries={...preset.boundaries};
+    else c.grading.customBoundaries={...preset.boundaries};
+    c.grading.customName=preset.name;
+  }
+
+  function createCourse(name,options={}){
     const id=uid("course");
-    db.courses[id]={id,name:String(name||"New course").trim(),students:{},detachedStudents:{},assessments:{},grading:{system:"finnish",missingPolicy:"redistribute",finnishBoundaries:{...FINNISH},ibBoundaries:{...IB}},createdAt:now(),updatedAt:now()};
+    const presetKey=options.presetKey&&GRADE_PRESETS[options.presetKey]?options.presetKey:"finnish";
+    const preset=GRADE_PRESETS[presetKey];
+    db.courses[id]={
+      id,
+      name:String(name||"New course").trim(),
+      students:{},
+      detachedStudents:{},
+      assessments:{},
+      grading:{
+        system:preset.system,
+        presetKey,
+        missingPolicy:options.missingPolicy==="zero"?"zero":"redistribute",
+        finnishBoundaries:{...FINNISH},
+        ibBoundaries:{...IB},
+        customBoundaries:preset.system==="custom"?{...preset.boundaries}:{},
+        customName:preset.name
+      },
+      createdAt:now(),
+      updatedAt:now()
+    };
+    if(options.boundaries){
+      const custom=validateBoundaries(options.boundaries);
+      db.courses[id].grading.system="custom";
+      db.courses[id].grading.presetKey="custom";
+      db.courses[id].grading.customBoundaries=custom;
+      db.courses[id].grading.customName=options.customName||"Custom";
+    }
     db.settings.activeCourseId=id;save();return db.courses[id];
+  }
+
+  function createCourseDialog(defaultName=""){
+    return new Promise(resolve=>{
+      const overlay=document.createElement("div");overlay.className="aa-modal-overlay";
+      const modal=document.createElement("div");modal.className="aa-modal";
+      const head=document.createElement("div");head.className="aa-modal-head";head.textContent="Create course";
+      const body=document.createElement("div");body.className="aa-modal-body";
+
+      const form=document.createElement("div");form.className="aa-course-form";
+      const nameLabel=document.createElement("label");nameLabel.textContent="Course name";
+      const name=document.createElement("input");name.className="aa-input";name.value=defaultName;name.placeholder="e.g. BIO HL";
+      nameLabel.appendChild(name);
+
+      const presetLabel=document.createElement("label");presetLabel.textContent="Grading / grade boundaries";
+      const preset=document.createElement("select");preset.className="aa-select";
+      for(const [key,p] of Object.entries(GRADE_PRESETS)){const o=document.createElement("option");o.value=key;o.textContent=p.name;preset.appendChild(o)}
+      const customOption=document.createElement("option");customOption.value="custom";customOption.textContent="Custom";preset.appendChild(customOption);
+      presetLabel.appendChild(preset);
+
+      const missingLabel=document.createElement("label");missingLabel.textContent="Missing assessment result";
+      const missing=document.createElement("select");missing.className="aa-select";
+      missing.innerHTML='<option value="redistribute">Redistribute missing weight</option><option value="zero">Missing counts as zero</option>';
+      missingLabel.appendChild(missing);
+
+      const boundaryLabel=document.createElement("label");boundaryLabel.textContent="Grade boundaries (%)";
+      const area=document.createElement("textarea");area.className="aa-area aa-boundary-area";boundaryLabel.appendChild(area);
+
+      const importRow=document.createElement("div");importRow.className="aa-toolbar";
+      const importBtn=btn("Import boundary JSON",()=>choose(".json,application/json",async file=>{
+        try{
+          const parsed=JSON.parse(await file.text());
+          const boundaries=validateBoundaries(parsed.boundaries||parsed);
+          area.value=JSON.stringify(boundaries,null,2);
+          preset.value="custom";
+        }catch(e){alert("Could not import grade boundaries: "+e.message)}
+      }));
+      importRow.appendChild(importBtn);
+
+      const refresh=()=>{
+        if(preset.value==="custom"){
+          if(!area.value.trim())area.value=JSON.stringify(GRADE_PRESETS.finnish.boundaries,null,2);
+          area.readOnly=false;
+        }else{
+          area.value=JSON.stringify(GRADE_PRESETS[preset.value].boundaries,null,2);
+          area.readOnly=false;
+        }
+      };
+      preset.onchange=refresh;refresh();
+      form.append(nameLabel,presetLabel,missingLabel,boundaryLabel,importRow);body.appendChild(form);
+
+      const foot=document.createElement("div");foot.className="aa-modal-foot";
+      const close=v=>{overlay.remove();resolve(v)};
+      foot.append(btn("Cancel",()=>close(null)),btn("Create course",()=>{
+        if(!name.value.trim())return alert("Enter a course name.");
+        try{
+          const boundaries=validateBoundaries(JSON.parse(area.value));
+          const selectedPreset=preset.value;
+          let c;
+          if(selectedPreset!=="custom"&&JSON.stringify(boundaries)===JSON.stringify(GRADE_PRESETS[selectedPreset].boundaries)){
+            c=createCourse(name.value.trim(),{presetKey:selectedPreset,missingPolicy:missing.value});
+          }else{
+            c=createCourse(name.value.trim(),{presetKey:"finnish",missingPolicy:missing.value,boundaries,customName:selectedPreset==="custom"?"Custom":GRADE_PRESETS[selectedPreset]?.name+" (edited)"});
+          }
+          close(c);
+        }catch(e){alert("Invalid grade boundaries: "+e.message)}
+      },"primary"));
+      modal.append(head,body,foot);overlay.appendChild(modal);document.body.appendChild(overlay);name.focus();
+      overlay.onclick=ev=>{if(ev.target===overlay)close(null)};
+    });
   }
 
   function createStudent(c,incoming){
@@ -580,7 +724,7 @@
   }
 
   function gradeFor(c,pct){
-    const map=c.grading.system==="ib"?c.grading.ibBoundaries:c.grading.finnishBoundaries;
+    const map=currentBoundaries(c);
     return Object.entries(map||{}).map(([g,t])=>[g,num(t)]).filter(([,t])=>Number.isFinite(t)).sort((a,b)=>b[1]-a[1]).find(([,t])=>pct>=t)?.[0]||"";
   }
 
@@ -711,9 +855,8 @@
 
     let c=course();
     if(!c){
-      const courseName=prompt("Luo kurssi / ryhmä:", "Google Forms");
-      if(!courseName?.trim())return;
-      c=createCourse(courseName.trim());
+      c=await createCourseDialog("Google Forms");
+      if(!c)return;
     }
 
     const defaultName=String(file.name||"Google Forms quiz").replace(/\.(csv|tsv|txt)$/i,"");
@@ -800,7 +943,7 @@
   .aa-score{cursor:pointer;text-decoration:underline dotted}.aa-card{border:1px solid #dde4e0;background:#fafcfb;border-radius:9px;padding:9px;margin-bottom:8px}.aa-card h3{margin:0 0 7px;font-size:14px}.aa-area{width:100%;min-height:170px;font-family:ui-monospace,Consolas,monospace}
   .aa-mini{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:6px;align-items:center;padding:6px 2px;border-bottom:1px solid #edf1ef}.aa-mini-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.aa-empty{text-align:center;color:#6a7871;padding:25px}\n  .aa-modal-overlay{position:fixed;inset:0;z-index:2147483647;background:#0007;display:flex;align-items:center;justify-content:center;padding:18px}\n  .aa-modal{width:min(920px,96vw);max-height:90vh;display:flex;flex-direction:column;background:#fff;color:#172026;border:1px solid #87958f;border-radius:10px;box-shadow:0 18px 60px #0006;overflow:hidden}\n  .aa-modal-head{padding:10px 12px;font-weight:800;border-bottom:1px solid #dde4e0;background:#f5f8f6}.aa-modal-body{padding:10px 12px;overflow:auto}.aa-modal-foot{padding:9px 12px;display:flex;justify-content:flex-end;gap:6px;border-top:1px solid #dde4e0;background:#fafcfb}\n  .aa-import-table td,.aa-import-table th{white-space:normal}.aa-row-disabled{opacity:.48}.aa-result-input{width:85px}
   .aa-destination-options{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px;margin-top:10px}.aa-destination-card{display:flex;flex-direction:column;gap:4px;text-align:left;border:1px solid #bbc8c2;border-radius:9px;background:#fff;color:#172026;padding:12px;cursor:pointer}.aa-destination-card:hover{background:#f5f8f6;border-color:#7f938a}.aa-destination-card strong{font-size:13px}.aa-destination-card span{font-size:11px;color:#6a7871}
-  #aa-grading-manager{margin:10px 0 14px;border:1px solid #aebbb5;border-radius:8px;background:#fff;color:#172026;font:12px system-ui,-apple-system,Segoe UI,sans-serif;overflow:hidden}.aa-manager-bar{display:flex;align-items:center;gap:7px;flex-wrap:wrap;padding:8px;background:#f5f8f6;border-bottom:1px solid #d7dfdb}.aa-manager-table{width:100%;border-collapse:collapse}.aa-manager-table th,.aa-manager-table td{padding:7px 8px;border-bottom:1px solid #e1e6e3;text-align:left;vertical-align:middle}.aa-manager-table th{background:#fafcfb}.aa-manager-exam{min-width:260px;font-weight:600}.aa-manager-select{min-width:185px}.aa-manager-select .aa-batch-check{margin-right:8px}.aa-add-group-select{min-width:145px}.aa-manager-select .aa-batch-check{margin-right:7px}.aa-manager-courses{min-width:280px}.aa-course-chip{display:inline-block;margin:2px 5px 2px 0;padding:4px 7px;border:1px solid #9dafaa;border-radius:999px;background:#f7faf8;color:#24362f;cursor:pointer;font-size:11px}.aa-course-chip:hover{background:#edf4f0}.aa-placement-table{margin-top:10px}.aa-placement-card{margin-top:10px}.aa-placement-title{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:8px}.aa-placement-title label{display:flex;align-items:center;gap:6px}.aa-sortable-head{cursor:pointer;user-select:none}.aa-sortable-head:hover{background:#eef4f1!important}.aa-sortable-head.active{font-weight:800}.aa-sort-arrow{font-size:10px;white-space:nowrap}.aa-gradebook-search{min-width:190px}.aa-gradebook-head-row{display:flex;align-items:center;justify-content:space-between;gap:5px}.aa-sort-icon{border:0;background:transparent;color:#52635b;cursor:pointer;font-size:10px;padding:1px 2px;line-height:1}.aa-sort-icon:hover{color:#111}.aa-table th.active-sort{background:#eef4f1}.aa-header-weight{width:52px;margin:2px 3px 0;padding:2px 3px;border:1px solid #b7c4be;border-radius:4px;font-size:10px}.aa-student-weight-wrap{display:flex;align-items:center;gap:3px;margin-top:3px}.aa-student-weight{width:48px;padding:2px 3px;border:1px solid #c6d0cb;border-radius:4px;font-size:10px}.aa-exam-name-filter{min-width:180px}.aa-direct-suggestions{margin-top:10px;display:flex;flex-direction:column;gap:6px}.aa-direct-suggestion{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px;border:1px solid #dde4e0;border-radius:7px;background:#fafcfb}.aa-student-picker-scroll{max-height:55vh;overflow:auto}.aa-modal-wide{width:min(1100px,94vw)!important}.aa-assessment-chip{display:inline-flex;align-items:center;gap:4px;margin:2px 5px 2px 0;padding:3px 5px;border:1px solid #ccd7d2;border-radius:999px;background:#f7faf8}.aa-assessment-chip button{border:0;background:transparent;color:#a33;cursor:pointer;font-weight:700;padding:0 2px}.aa-removed-student{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #e5ebe8}.aa-removed-student>span{flex:1}
+  #aa-grading-manager{margin:10px 0 14px;border:1px solid #aebbb5;border-radius:8px;background:#fff;color:#172026;font:12px system-ui,-apple-system,Segoe UI,sans-serif;overflow:hidden}.aa-manager-bar{display:flex;align-items:center;gap:7px;flex-wrap:wrap;padding:8px;background:#f5f8f6;border-bottom:1px solid #d7dfdb}.aa-manager-table{width:100%;border-collapse:collapse}.aa-manager-table th,.aa-manager-table td{padding:7px 8px;border-bottom:1px solid #e1e6e3;text-align:left;vertical-align:middle}.aa-manager-table th{background:#fafcfb}.aa-manager-exam{min-width:260px;font-weight:600}.aa-manager-select{min-width:185px}.aa-manager-select .aa-batch-check{margin-right:8px}.aa-add-group-select{min-width:145px}.aa-manager-select .aa-batch-check{margin-right:7px}.aa-manager-courses{min-width:280px}.aa-course-chip{display:inline-block;margin:2px 5px 2px 0;padding:4px 7px;border:1px solid #9dafaa;border-radius:999px;background:#f7faf8;color:#24362f;cursor:pointer;font-size:11px}.aa-course-chip:hover{background:#edf4f0}.aa-placement-table{margin-top:10px}.aa-placement-card{margin-top:10px}.aa-placement-title{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:8px}.aa-placement-title label{display:flex;align-items:center;gap:6px}.aa-sortable-head{cursor:pointer;user-select:none}.aa-sortable-head:hover{background:#eef4f1!important}.aa-sortable-head.active{font-weight:800}.aa-sort-arrow{font-size:10px;white-space:nowrap}.aa-gradebook-search{min-width:190px}.aa-gradebook-head-row{display:flex;align-items:center;justify-content:space-between;gap:5px}.aa-sort-icon{border:0;background:transparent;color:#52635b;cursor:pointer;font-size:10px;padding:1px 2px;line-height:1}.aa-sort-icon:hover{color:#111}.aa-table th.active-sort{background:#eef4f1}.aa-header-weight{width:52px;margin:2px 3px 0;padding:2px 3px;border:1px solid #b7c4be;border-radius:4px;font-size:10px}.aa-student-weight-wrap{display:flex;align-items:center;gap:3px;margin-top:3px}.aa-student-weight{width:48px;padding:2px 3px;border:1px solid #c6d0cb;border-radius:4px;font-size:10px}.aa-exam-name-filter{min-width:180px}.aa-direct-suggestions{margin-top:10px;display:flex;flex-direction:column;gap:6px}.aa-direct-suggestion{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px;border:1px solid #dde4e0;border-radius:7px;background:#fafcfb}.aa-student-picker-scroll{max-height:55vh;overflow:auto}.aa-modal-wide{width:min(1100px,94vw)!important}.aa-assessment-chip{display:inline-flex;align-items:center;gap:4px;margin:2px 5px 2px 0;padding:3px 5px;border:1px solid #ccd7d2;border-radius:999px;background:#f7faf8}.aa-assessment-chip button{border:0;background:transparent;color:#a33;cursor:pointer;font-weight:700;padding:0 2px}.aa-removed-student{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #e5ebe8}.aa-removed-student>span{flex:1}.aa-course-form{display:grid;gap:10px}.aa-course-form label{display:grid;gap:5px;font-weight:600}.aa-boundary-area{min-height:180px;font-family:ui-monospace,SFMono-Regular,Consolas,monospace!important}
 
   #aa-grading-batchbar{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin:10px 0;padding:9px;border:1px solid #9eaaa4;border-radius:8px;background:#f5f8f6;color:#172026;font:12px system-ui,-apple-system,Segoe UI,sans-serif}#aa-grading-batchbar .aa-batch-hint{flex:1 1 320px;color:#53615a}.aa-batch-col{width:120px;min-width:120px;text-align:center!important}.aa-batch-cell{vertical-align:middle}.aa-batch-check{margin-right:6px}.aa-batch-group{width:48px;padding:3px 5px;border:1px solid #aebbb5;border-radius:5px;text-transform:uppercase}.aa-batch-head .aa-batch-sub{font-size:10px;font-weight:400;color:#66746d}\n  `);
 
@@ -891,7 +1034,7 @@
       h.appendChild(nameInput);
     }
 
-    h.appendChild(btn("+ Course",()=>{const n=prompt("Course/class name:");if(n?.trim()){createCourse(n);render()}}));
+    h.appendChild(btn("+ Course",async()=>{const c=await createCourseDialog();if(c)render()}));
     if(IS_ABITTI)h.appendChild(btn("Import OmaAbitti",importDialog,"primary"));
     h.appendChild(btn(compact?"Full":"Compact",()=>{setPanelState(true,!compact);render()}));h.appendChild(btn("×",()=>{setPanelState(false,compact);render()}));p.appendChild(h);
   }
@@ -901,7 +1044,7 @@
     for(const [id,label] of [["gradebook","Gradebook"],["assessments","Assessments"],["students","Students"],["data","Data"],["settings","Settings"]]){const b=document.createElement("button");b.className="aa-tab "+(db.settings.activeTab===id?"active":"");b.textContent=label;b.onclick=()=>{db.settings.activeTab=id;save();render()};t.appendChild(b)}p.appendChild(t);
   }
 
-  function noCourse(parent){const d=document.createElement("div");d.className="aa-empty";d.textContent="Create a course before importing results.";d.append(document.createElement("br"),btn("Create course",()=>{const n=prompt("Course/class name:");if(n?.trim()){createCourse(n);render()}},"primary"));parent.appendChild(d)}
+  function noCourse(parent){const d=document.createElement("div");d.className="aa-empty";d.textContent="Create a course before importing results.";d.append(document.createElement("br"),btn("Create course",async()=>{const c=await createCourseDialog();if(c)render()},"primary"));parent.appendChild(d)}
 
   async function detectedExamFromHeldExamCode(code,titleFallback="OmaAbitti exam"){
     const studentsRaw=await abittiJson("/exam-api/grading/"+encodeURIComponent(code)+"/student-answers-return");
@@ -1460,8 +1603,67 @@
   }
 
   function settings(parent,c){
-    const a=document.createElement("div");a.className="aa-card";a.innerHTML="<h3>Grade calculation</h3>";const sys=document.createElement("select");sys.className="aa-select";sys.innerHTML='<option value="finnish">Finnish 4–10</option><option value="ib">IB 1–7</option>';sys.value=c.grading.system;sys.onchange=()=>{c.grading.system=sys.value;save();render()};const miss=document.createElement("select");miss.className="aa-select";miss.innerHTML='<option value="redistribute">Redistribute missing weight</option><option value="zero">Missing counts as zero</option>';miss.value=c.grading.missingPolicy;miss.onchange=()=>{c.grading.missingPolicy=miss.value;save();render()};a.append("Grading system: ",sys,document.createElement("br"),document.createElement("br"),"Missing result: ",miss);parent.appendChild(a);
-    const b=document.createElement("div");b.className="aa-card";b.innerHTML="<h3>Grade boundaries</h3>";const area=document.createElement("textarea");area.className="aa-area";area.value=JSON.stringify(c.grading.system==="ib"?c.grading.ibBoundaries:c.grading.finnishBoundaries,null,2);b.appendChild(area);b.appendChild(btn("Save boundaries",()=>{try{const x=JSON.parse(area.value);for(const v of Object.values(x))if(!Number.isFinite(num(v)))throw new Error("Every threshold must be numeric.");if(c.grading.system==="ib")c.grading.ibBoundaries=x;else c.grading.finnishBoundaries=x;save();render()}catch(e){alert(e.message)}},"primary"));parent.appendChild(b);
+    c.grading||={};
+    c.grading.finnishBoundaries||={...FINNISH};
+    c.grading.ibBoundaries||={...IB};
+    c.grading.customBoundaries||={};
+
+    const calcCard=document.createElement("div");calcCard.className="aa-card";calcCard.innerHTML="<h3>Grade calculation</h3>";
+    const preset=document.createElement("select");preset.className="aa-select";
+    for(const [key,p] of Object.entries(GRADE_PRESETS)){const o=document.createElement("option");o.value=key;o.textContent=p.name;preset.appendChild(o)}
+    const custom=document.createElement("option");custom.value="custom";custom.textContent="Custom";preset.appendChild(custom);
+    preset.value=presetForCourse(c);
+
+    const miss=document.createElement("select");miss.className="aa-select";
+    miss.innerHTML='<option value="redistribute">Redistribute missing weight</option><option value="zero">Missing counts as zero</option>';
+    miss.value=c.grading.missingPolicy||"redistribute";
+    miss.onchange=()=>{c.grading.missingPolicy=miss.value;c.updatedAt=now();save();render()};
+
+    calcCard.append("Boundary preset: ",preset,document.createElement("br"),document.createElement("br"),"Missing result: ",miss);
+    parent.appendChild(calcCard);
+
+    const boundaryCard=document.createElement("div");boundaryCard.className="aa-card";
+    boundaryCard.innerHTML="<h3>Grade boundaries</h3><div class='aa-muted aa-small'>Grade label → minimum percentage. Presets can be edited; edited presets become Custom.</div>";
+    const area=document.createElement("textarea");area.className="aa-area aa-boundary-area";
+    const loadArea=()=>{area.value=JSON.stringify(currentBoundaries(c),null,2)};
+    loadArea();boundaryCard.appendChild(area);
+
+    preset.onchange=()=>{
+      if(preset.value==="custom"){
+        c.grading.system="custom";c.grading.presetKey="custom";
+        if(!Object.keys(c.grading.customBoundaries||{}).length)c.grading.customBoundaries={...currentBoundaries(c)};
+      }else applyGradePreset(c,preset.value);
+      c.updatedAt=now();save();loadArea();render();
+    };
+
+    const actions=document.createElement("div");actions.className="aa-toolbar";
+    actions.append(
+      btn("Save boundaries",()=>{
+        try{
+          const boundaries=validateBoundaries(JSON.parse(area.value));
+          const key=preset.value;
+          if(key!=="custom"&&JSON.stringify(boundaries)===JSON.stringify(GRADE_PRESETS[key].boundaries)){
+            applyGradePreset(c,key);
+          }else{
+            c.grading.system="custom";c.grading.presetKey="custom";c.grading.customBoundaries=boundaries;c.grading.customName="Custom";preset.value="custom";
+          }
+          c.updatedAt=now();save();render();
+        }catch(e){alert("Invalid grade boundaries: "+e.message)}
+      },"primary"),
+      btn("Export boundaries",()=>{
+        const payload={format:"ArviointiApina-grade-boundaries-v1",name:c.grading.customName||GRADE_PRESETS[presetForCourse(c)]?.name||"Custom",boundaries:currentBoundaries(c)};
+        download((c.name.replace(/[^\w-]+/g,"_")||"course")+"_grade-boundaries.json",JSON.stringify(payload,null,2),"application/json");
+      }),
+      btn("Import boundaries",()=>choose(".json,application/json",async file=>{
+        try{
+          const parsed=JSON.parse(await file.text());
+          const boundaries=validateBoundaries(parsed.boundaries||parsed);
+          c.grading.system="custom";c.grading.presetKey="custom";c.grading.customBoundaries=boundaries;c.grading.customName=String(parsed.name||file.name||"Custom");
+          c.updatedAt=now();save();render();
+        }catch(e){alert("Could not import grade boundaries: "+e.message)}
+      }))
+    );
+    boundaryCard.appendChild(actions);parent.appendChild(boundaryCard);
   }
 
   function compactView(p){
@@ -1900,10 +2102,9 @@
     }
     courseSelect.onchange=()=>{db.settings.activeCourseId=courseSelect.value;save();render();setupGradingListPicker(true)};
 
-    const addCourseBtn=btn("+ Course",()=>{
-      const n=prompt("Course/class name:");
-      if(!n?.trim())return;
-      createCourse(n.trim());
+    const addCourseBtn=btn("+ Course",async()=>{
+      const c=await createCourseDialog();
+      if(!c)return;
       render();
       setupGradingListPicker(true);
     });
@@ -1928,8 +2129,8 @@
     const importBtn=btn("Add selected to gradebook",async()=>{
       let targetCourse=course();
       if(!targetCourse){
-        const n=prompt("Create course/class:","New course");if(!n?.trim())return;
-        targetCourse=createCourse(n.trim());
+        targetCourse=await createCourseDialog("New course");
+        if(!targetCourse)return;
       }
       const selected=rowStates.filter(r=>r.cb.checked).map(r=>({
         title:r.item.title,
@@ -2104,9 +2305,8 @@
 
     let c=course();
     if(!c){
-      const n=prompt("Create course:",detected.name.split(":")[0].trim());
-      if(!n?.trim())return;
-      c=createCourse(n.trim());
+      c=await createCourseDialog(detected.name.split(":")[0].trim());
+      if(!c)return;
     }
 
     const maxInfo=await resolveDetectedMaxPoints(detected);
