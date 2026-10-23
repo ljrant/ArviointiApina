@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         ArviointiApina BETA 0.10.0-beta.1
+// @name         ArviointiApina BETA 0.11.0-beta.1
 // @namespace    https://github.com/ljrant/ArviointiApina
-// @version      0.10.0-beta.1
+// @version      0.11.0-beta.1
 // @description  BETA: OmaAbitti + Google Forms result collector and weighted course gradebook.
 // @match        *://*/*
 // @grant        GM_getValue
@@ -24,7 +24,7 @@
   "use strict";
 
   const KEY="arviointiapina_userscript_beta_v1";
-  const APP_VERSION="0.10.0-beta.1";
+  const APP_VERSION="0.11.0-beta.1";
   const APP_NAME="ArviointiApina BETA "+APP_VERSION;
   const FINNISH={"10":90,"9½":85,"9":80,"8½":75,"8":70,"7½":65,"7":60,"6½":55,"6":50,"5½":45,"5":40,"4½":30,"4":0};
   const IB={"7":85,"6":70,"5":55,"4":40,"3":25,"2":10,"1":0};
@@ -800,7 +800,7 @@
   .aa-score{cursor:pointer;text-decoration:underline dotted}.aa-card{border:1px solid #dde4e0;background:#fafcfb;border-radius:9px;padding:9px;margin-bottom:8px}.aa-card h3{margin:0 0 7px;font-size:14px}.aa-area{width:100%;min-height:170px;font-family:ui-monospace,Consolas,monospace}
   .aa-mini{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:6px;align-items:center;padding:6px 2px;border-bottom:1px solid #edf1ef}.aa-mini-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.aa-empty{text-align:center;color:#6a7871;padding:25px}\n  .aa-modal-overlay{position:fixed;inset:0;z-index:2147483647;background:#0007;display:flex;align-items:center;justify-content:center;padding:18px}\n  .aa-modal{width:min(920px,96vw);max-height:90vh;display:flex;flex-direction:column;background:#fff;color:#172026;border:1px solid #87958f;border-radius:10px;box-shadow:0 18px 60px #0006;overflow:hidden}\n  .aa-modal-head{padding:10px 12px;font-weight:800;border-bottom:1px solid #dde4e0;background:#f5f8f6}.aa-modal-body{padding:10px 12px;overflow:auto}.aa-modal-foot{padding:9px 12px;display:flex;justify-content:flex-end;gap:6px;border-top:1px solid #dde4e0;background:#fafcfb}\n  .aa-import-table td,.aa-import-table th{white-space:normal}.aa-row-disabled{opacity:.48}.aa-result-input{width:85px}
   .aa-destination-options{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px;margin-top:10px}.aa-destination-card{display:flex;flex-direction:column;gap:4px;text-align:left;border:1px solid #bbc8c2;border-radius:9px;background:#fff;color:#172026;padding:12px;cursor:pointer}.aa-destination-card:hover{background:#f5f8f6;border-color:#7f938a}.aa-destination-card strong{font-size:13px}.aa-destination-card span{font-size:11px;color:#6a7871}
-  #aa-grading-manager{margin:10px 0 14px;border:1px solid #aebbb5;border-radius:8px;background:#fff;color:#172026;font:12px system-ui,-apple-system,Segoe UI,sans-serif;overflow:hidden}.aa-manager-bar{display:flex;align-items:center;gap:7px;flex-wrap:wrap;padding:8px;background:#f5f8f6;border-bottom:1px solid #d7dfdb}.aa-manager-table{width:100%;border-collapse:collapse}.aa-manager-table th,.aa-manager-table td{padding:7px 8px;border-bottom:1px solid #e1e6e3;text-align:left;vertical-align:middle}.aa-manager-table th{background:#fafcfb}.aa-manager-exam{min-width:260px;font-weight:600}.aa-manager-select{min-width:185px}.aa-manager-select .aa-batch-check{margin-right:8px}.aa-add-group-select{min-width:145px}.aa-manager-select .aa-batch-check{margin-right:7px}.aa-manager-courses{min-width:280px}.aa-course-chip{display:inline-block;margin:2px 5px 2px 0;padding:4px 7px;border:1px solid #9dafaa;border-radius:999px;background:#f7faf8;color:#24362f;cursor:pointer;font-size:11px}.aa-course-chip:hover{background:#edf4f0}.aa-placement-table{margin-top:10px}.aa-placement-card{margin-top:10px}.aa-placement-title{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:8px}.aa-placement-title label{display:flex;align-items:center;gap:6px}.aa-sortable-head{cursor:pointer;user-select:none}.aa-sortable-head:hover{background:#eef4f1!important}.aa-sortable-head.active{font-weight:800}.aa-sort-arrow{font-size:10px;white-space:nowrap}.aa-gradebook-search{min-width:190px}.aa-exam-name-filter{min-width:180px}.aa-direct-suggestions{margin-top:10px;display:flex;flex-direction:column;gap:6px}.aa-direct-suggestion{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px;border:1px solid #dde4e0;border-radius:7px;background:#fafcfb}.aa-student-picker-scroll{max-height:55vh;overflow:auto}.aa-modal-wide{width:min(1100px,94vw)!important}.aa-assessment-chip{display:inline-flex;align-items:center;gap:4px;margin:2px 5px 2px 0;padding:3px 5px;border:1px solid #ccd7d2;border-radius:999px;background:#f7faf8}.aa-assessment-chip button{border:0;background:transparent;color:#a33;cursor:pointer;font-weight:700;padding:0 2px}.aa-removed-student{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #e5ebe8}.aa-removed-student>span{flex:1}
+  #aa-grading-manager{margin:10px 0 14px;border:1px solid #aebbb5;border-radius:8px;background:#fff;color:#172026;font:12px system-ui,-apple-system,Segoe UI,sans-serif;overflow:hidden}.aa-manager-bar{display:flex;align-items:center;gap:7px;flex-wrap:wrap;padding:8px;background:#f5f8f6;border-bottom:1px solid #d7dfdb}.aa-manager-table{width:100%;border-collapse:collapse}.aa-manager-table th,.aa-manager-table td{padding:7px 8px;border-bottom:1px solid #e1e6e3;text-align:left;vertical-align:middle}.aa-manager-table th{background:#fafcfb}.aa-manager-exam{min-width:260px;font-weight:600}.aa-manager-select{min-width:185px}.aa-manager-select .aa-batch-check{margin-right:8px}.aa-add-group-select{min-width:145px}.aa-manager-select .aa-batch-check{margin-right:7px}.aa-manager-courses{min-width:280px}.aa-course-chip{display:inline-block;margin:2px 5px 2px 0;padding:4px 7px;border:1px solid #9dafaa;border-radius:999px;background:#f7faf8;color:#24362f;cursor:pointer;font-size:11px}.aa-course-chip:hover{background:#edf4f0}.aa-placement-table{margin-top:10px}.aa-placement-card{margin-top:10px}.aa-placement-title{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:8px}.aa-placement-title label{display:flex;align-items:center;gap:6px}.aa-sortable-head{cursor:pointer;user-select:none}.aa-sortable-head:hover{background:#eef4f1!important}.aa-sortable-head.active{font-weight:800}.aa-sort-arrow{font-size:10px;white-space:nowrap}.aa-gradebook-search{min-width:190px}.aa-gradebook-head-row{display:flex;align-items:center;justify-content:space-between;gap:5px}.aa-sort-icon{border:0;background:transparent;color:#52635b;cursor:pointer;font-size:10px;padding:1px 2px;line-height:1}.aa-sort-icon:hover{color:#111}.aa-table th.active-sort{background:#eef4f1}.aa-header-weight{width:52px;margin:2px 3px 0;padding:2px 3px;border:1px solid #b7c4be;border-radius:4px;font-size:10px}.aa-student-weight-wrap{display:flex;align-items:center;gap:3px;margin-top:3px}.aa-student-weight{width:48px;padding:2px 3px;border:1px solid #c6d0cb;border-radius:4px;font-size:10px}.aa-exam-name-filter{min-width:180px}.aa-direct-suggestions{margin-top:10px;display:flex;flex-direction:column;gap:6px}.aa-direct-suggestion{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px;border:1px solid #dde4e0;border-radius:7px;background:#fafcfb}.aa-student-picker-scroll{max-height:55vh;overflow:auto}.aa-modal-wide{width:min(1100px,94vw)!important}.aa-assessment-chip{display:inline-flex;align-items:center;gap:4px;margin:2px 5px 2px 0;padding:3px 5px;border:1px solid #ccd7d2;border-radius:999px;background:#f7faf8}.aa-assessment-chip button{border:0;background:transparent;color:#a33;cursor:pointer;font-weight:700;padding:0 2px}.aa-removed-student{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #e5ebe8}.aa-removed-student>span{flex:1}
 
   #aa-grading-batchbar{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin:10px 0;padding:9px;border:1px solid #9eaaa4;border-radius:8px;background:#f5f8f6;color:#172026;font:12px system-ui,-apple-system,Segoe UI,sans-serif}#aa-grading-batchbar .aa-batch-hint{flex:1 1 320px;color:#53615a}.aa-batch-col{width:120px;min-width:120px;text-align:center!important}.aa-batch-cell{vertical-align:middle}.aa-batch-check{margin-right:6px}.aa-batch-group{width:48px;padding:3px 5px;border:1px solid #aebbb5;border-radius:5px;text-transform:uppercase}.aa-batch-head .aa-batch-sub{font-size:10px;font-weight:400;color:#66746d}\n  `);
 
@@ -982,17 +982,24 @@
     if(!destination)return;
     if(destination.type==="existing"){
       const a=destination.assessment,parts=ensureParts(a);
+      const weightInput=prompt('Course-grade weight % for "'+a.name+'":',String(Math.max(0,num(a.defaultWeight)||0)));
+      if(weightInput===null)return;
+      const weight=num(weightInput);if(!(weight>=0))return alert("Invalid weight.");
+      a.defaultWeight=weight;
       const part={id:uid("part"),name:detected.name,maxPoints,effect:1,source:{type:"omaabitti",reviewPath:detected.reviewPath},results:{},createdAt:now(),updatedAt:now()};
       const stats=importSelectedIntoResults(c,part.results,selectedIndexes,selection.existingOnly,detected);
       parts.push(part);syncCompositeMax(a);a.updatedAt=now();c.updatedAt=now();save();render();
       return alert("Added as a part of "+a.name+". Imported "+stats.imported+" results.");
     }
 
+    const weightInput=prompt('Course-grade weight % for "'+detected.name+'":',"0");
+    if(weightInput===null)return;
+    const weight=num(weightInput);if(!(weight>=0))return alert("Invalid weight.");
     const id=uid("assessment");
-    const a=c.assessments[id]={id,name:detected.name,maxPoints,defaultWeight:0,type:"exam",source:{type:"omaabitti",reviewPath:detected.reviewPath},results:{},createdAt:now(),updatedAt:now()};
+    const a=c.assessments[id]={id,name:detected.name,maxPoints,defaultWeight:weight,type:"exam",source:{type:"omaabitti",reviewPath:detected.reviewPath},results:{},createdAt:now(),updatedAt:now()};
     const stats=importSelectedIntoResults(c,a.results,selectedIndexes,selection.existingOnly,detected);
     c.updatedAt=now();save();render();
-    alert("Added "+detected.name+". Imported "+stats.imported+" results. Weight starts at 0%.");
+    alert("Added "+detected.name+". Imported "+stats.imported+" results. Weight: "+weight+"%.");
   }
 
   async function openAddExamDialog(c){
@@ -1081,41 +1088,126 @@
 
   function gradebook(parent,c){
     const bar=document.createElement("div");bar.className="aa-toolbar";
-    const info=document.createElement("span");info.className="aa-muted aa-small";info.textContent=Object.keys(c.students).length+" students · "+Object.keys(c.assessments).length+" assessments";
+    const info=document.createElement("span");info.className="aa-muted aa-small";
+    info.textContent=Object.keys(c.students).length+" students · "+Object.keys(c.assessments).length+" assessments";
     const search=document.createElement("input");search.className="aa-input aa-gradebook-search";search.placeholder="Search student…";
     bar.append(info,search,btn("+ Add exam",()=>openAddExamDialog(c),"primary"));
     if(IS_ABITTI)bar.appendChild(btn("Import current exam",importDialog));
     bar.appendChild(btn("Export CSV",()=>exportCSV(c)));parent.appendChild(bar);
 
-    const allStudents=Object.values(c.students).sort((a,b)=>a.canonicalName.localeCompare(b.canonicalName,"fi"));
+    const allStudents=Object.values(c.students);
     const as=Object.values(c.assessments);
     if(!allStudents.length){const e=document.createElement("div");e.className="aa-empty";e.textContent="No students yet.";return parent.appendChild(e)}
 
-    const wrap=document.createElement("div");wrap.className="aa-table-wrap";const table=document.createElement("table");table.className="aa-table";
-    const thead=document.createElement("thead"),hr=document.createElement("tr");hr.innerHTML='<th class="student">Student</th>';
-    for(const a of as){const th=document.createElement("th");th.innerHTML=esc(a.name)+'<div class="aa-muted aa-small">'+a.defaultWeight+'% · max '+effectiveMax(a)+(hasParts(a)?" · "+a.parts.length+" parts":"")+"</div>";hr.appendChild(th)}
-    hr.insertAdjacentHTML("beforeend","<th>Weighted</th><th>Grade</th><th></th>");thead.appendChild(hr);table.appendChild(thead);
+    let sortKey="student",sortDir="asc";
+    const wrap=document.createElement("div");wrap.className="aa-table-wrap";
+    const table=document.createElement("table");table.className="aa-table aa-gradebook-table";
+    const thead=document.createElement("thead"),hr=document.createElement("tr");
+
+    const sortableHeader=(label,key)=>{
+      const th=document.createElement("th");
+      const row=document.createElement("div");row.className="aa-gradebook-head-row";
+      const text=document.createElement("span");text.textContent=label;
+      const icon=document.createElement("button");icon.type="button";icon.className="aa-sort-icon";icon.title="Sort by "+label;
+      icon.onclick=e=>{e.stopPropagation();if(sortKey===key)sortDir=sortDir==="asc"?"desc":"asc";else{sortKey=key;sortDir="asc"}draw()};
+      row.append(text,icon);th.appendChild(row);
+      th.dataset.sortKey=key;return th;
+    };
+
+    const studentTh=sortableHeader("Student","student");studentTh.classList.add("student");hr.appendChild(studentTh);
+
+    for(const a of as){
+      const th=document.createElement("th");th.dataset.sortKey="assessment:"+a.id;
+      const row=document.createElement("div");row.className="aa-gradebook-head-row";
+      const title=document.createElement("span");title.textContent=a.name;
+      const icon=document.createElement("button");icon.type="button";icon.className="aa-sort-icon";icon.title="Sort by "+a.name+" result";
+      icon.onclick=e=>{e.stopPropagation();const key="assessment:"+a.id;if(sortKey===key)sortDir=sortDir==="asc"?"desc":"asc";else{sortKey=key;sortDir="desc"}draw()};
+      row.append(title,icon);th.appendChild(row);
+
+      const meta=document.createElement("div");meta.className="aa-muted aa-small";
+      meta.append(document.createTextNode("max "+fmt(effectiveMax(a),2)+(hasParts(a)?" · "+a.parts.length+" parts · ":" · ")));
+      const weight=document.createElement("input");weight.className="aa-header-weight";weight.type="number";weight.min="0";weight.step="0.1";weight.value=a.defaultWeight;
+      weight.title="Default course weight %. Individual student overrides still take priority.";
+      weight.onchange=()=>{
+        const v=num(weight.value);
+        if(!(v>=0)){alert("Invalid weight.");weight.value=a.defaultWeight;return}
+        a.defaultWeight=v;a.updatedAt=now();c.updatedAt=now();save();draw();
+      };
+      meta.append(weight,document.createTextNode("%"));th.appendChild(meta);hr.appendChild(th);
+    }
+
+    hr.append(sortableHeader("Weighted","weighted"),sortableHeader("Grade","grade"));
+    const actionTh=document.createElement("th");hr.appendChild(actionTh);
+    thead.appendChild(hr);table.appendChild(thead);
     const body=document.createElement("tbody");table.appendChild(body);wrap.appendChild(table);parent.appendChild(wrap);
 
-    const draw=()=>{
+    const sortValue=(st)=>{
+      if(sortKey==="student")return norm(st.canonicalName);
+      if(sortKey==="weighted"){const x=calc(c,st);return x.pct==null?null:x.pct}
+      if(sortKey==="grade"){const x=calc(c,st),n=num(x.grade);return Number.isFinite(n)?n:String(x.grade||"")}
+      if(sortKey.startsWith("assessment:")){
+        const id=sortKey.slice("assessment:".length),a=c.assessments[id];
+        if(!a)return null;
+        const r=effectiveResult(a,st.id),max=effectiveMax(a),p=num(r?.points);
+        return Number.isFinite(p)&&max>0?p/max:null;
+      }
+      return null;
+    };
+
+    function draw(){
+      for(const th of thead.querySelectorAll("[data-sort-key]")){
+        const icon=th.querySelector(".aa-sort-icon");if(!icon)continue;
+        icon.textContent=th.dataset.sortKey===sortKey?(sortDir==="asc"?"▲":"▼"):"↕";
+        th.classList.toggle("active-sort",th.dataset.sortKey===sortKey);
+      }
+
       body.innerHTML="";
       const needle=norm(search.value);
-      const ss=allStudents.filter(st=>!needle||names(st).some(n=>norm(n).includes(needle))||(st.emails||[]).some(e=>norm(e).includes(needle)));
+      const ss=allStudents
+        .filter(st=>!needle||names(st).some(n=>norm(n).includes(needle))||(st.emails||[]).some(e=>norm(e).includes(needle)))
+        .sort((a,b)=>{
+          const av=sortValue(a),bv=sortValue(b);
+          const aMissing=av===null||av===undefined||av==="",bMissing=bv===null||bv===undefined||bv==="";
+          if(aMissing!==bMissing)return aMissing?1:-1;
+          let v;
+          if(typeof av==="number"&&typeof bv==="number")v=av-bv;
+          else v=String(av??"").localeCompare(String(bv??""),"fi",{numeric:true,sensitivity:"base"});
+          if(v===0)v=a.canonicalName.localeCompare(b.canonicalName,"fi");
+          return sortDir==="asc"?v:-v;
+        });
+
       for(const st of ss){
         const x=calc(c,st),tr=document.createElement("tr"),name=document.createElement("td");name.className="student";name.textContent=st.canonicalName;tr.appendChild(name);
         for(const a of as){
           const td=document.createElement("td"),r=effectiveResult(a,st.id),sp=document.createElement("span");sp.className="aa-score";
           sp.textContent=r?fmt(num(r.points),2)+"/"+fmt(effectiveMax(a),2)+(hasParts(a)?" ("+(r.completedParts||0)+"/"+a.parts.length+" parts)":""):"—";
           sp.onclick=()=>hasParts(a)?editCompositeStudentResults(c,st,a):editResult(c,st,a);td.appendChild(sp);
-          if(Object.prototype.hasOwnProperty.call(st.weightingOverrides||{},a.id)){const b=document.createElement("span");b.className="aa-muted aa-small";b.textContent="  "+weightFor(st,a)+"%";td.appendChild(b)}
-          tr.appendChild(td);
+
+          const weightWrap=document.createElement("div");weightWrap.className="aa-student-weight-wrap";
+          const label=document.createElement("span");label.className="aa-muted aa-small";label.textContent="w";
+          const wi=document.createElement("input");wi.className="aa-student-weight";wi.type="number";wi.min="0";wi.step="0.1";
+          const hasOverride=Object.prototype.hasOwnProperty.call(st.weightingOverrides||{},a.id);
+          wi.value=hasOverride?st.weightingOverrides[a.id]:"";
+          wi.placeholder=String(a.defaultWeight);
+          wi.title="Individual weight %. Blank = course default ("+a.defaultWeight+"%). 0 = exclude.";
+          wi.onchange=()=>{
+            st.weightingOverrides||={};
+            const raw=wi.value.trim();
+            if(!raw)delete st.weightingOverrides[a.id];
+            else{
+              const v=num(raw);if(!(v>=0)){alert("Invalid individual weight.");wi.value=hasOverride?st.weightingOverrides[a.id]:"";return}
+              st.weightingOverrides[a.id]=v;
+            }
+            st.updatedAt=now();save();draw();
+          };
+          weightWrap.append(label,wi);td.appendChild(weightWrap);tr.appendChild(td);
         }
         const pct=document.createElement("td");pct.textContent=x.pct==null?"—":fmt(x.pct,1)+"%";tr.appendChild(pct);
         const gt=document.createElement("td");gt.appendChild(btn(x.grade||"—",async()=>{if(x.grade)await navigator.clipboard.writeText(x.grade)}));tr.appendChild(gt);
         const act=document.createElement("td");act.appendChild(btn("Weights",()=>editWeights(c,st)));tr.appendChild(act);body.appendChild(tr);
       }
       if(!ss.length){const tr=document.createElement("tr"),td=document.createElement("td");td.colSpan=as.length+4;td.className="aa-empty";td.textContent="No students match the search.";tr.appendChild(td);body.appendChild(tr)}
-    };
+    }
     search.oninput=draw;draw();
   }
 
@@ -1595,7 +1687,7 @@
           const group=items[0].group;
           const id=uid("assessment");
           target=c.assessments[id]={
-            id,name:"Assessment "+group,maxPoints:0,defaultWeight:0,type:"exam",
+            id,name:"Multipart "+group,maxPoints:0,defaultWeight:0,type:"exam",
             source:{type:"composite"},results:{},parts:[],createdAt:now(),updatedAt:now()
           };
         }else{
@@ -1610,6 +1702,14 @@
         }
       }
 
+      const currentWeight=target?Math.max(0,num(target.defaultWeight)||0):0;
+      const weightLabel=isGroup?("Multipart "+items[0].group):items[0].title;
+      const weightInput=prompt('Course-grade weight % for "'+weightLabel+'":',String(currentWeight));
+      if(weightInput===null){failed+=items.length;continue}
+      const importWeight=num(weightInput);
+      if(!(importWeight>=0)){alert("Invalid weight for "+weightLabel+".");failed+=items.length;continue}
+      if(target)target.defaultWeight=importWeight;
+
       for(const item of items){
         let existing=findReviewTarget(c,item.reviewPath);
 
@@ -1617,6 +1717,7 @@
           // Already present as its own assessment: refresh its scores/max rather
           // than silently failing.
           target=existing.assessment;
+          target.defaultWeight=importWeight;
         }
 
         const doc=await loadRenderedSameOriginPage(item.reviewPath,"#scoreTable tbody tr.student",15000);
@@ -1670,7 +1771,7 @@
           }else{
             const id=uid("assessment");
             const a=c.assessments[id]={
-              id,name:item.title,maxPoints,defaultWeight:0,type:"exam",
+              id,name:item.title,maxPoints,defaultWeight:importWeight,type:"exam",
               source:{type:"omaabitti",reviewPath:item.reviewPath},results:{},createdAt:now(),updatedAt:now()
             };
             const stats=importSelectedIntoResults(c,a.results,selectedIndexes,studentSelection.existingOnly,detected);
@@ -1836,7 +1937,7 @@
         group:r.add.value.startsWith("group:")?r.add.value.slice(6):""
       }));
       if(!selected.length)return alert("Select at least one exam.");
-      const summary=selected.map(x=>"• "+x.title+(x.group?" → group "+x.group.toUpperCase():" → separate assessment")).join("\n");
+      const summary=selected.map(x=>"• "+x.title+(x.group?" → multipart "+x.group.toUpperCase():" → separate assessment")).join("\n");
       if(!confirm("Add these exams to "+targetCourse.name+"?\n\n"+summary))return;
       importBtn.disabled=true;importBtn.textContent="Importing…";
       try{await importGradingListBatch(selected,targetCourse)}
@@ -1880,9 +1981,9 @@
       const cb=document.createElement("input");cb.type="checkbox";cb.className="aa-batch-check";
       const add=document.createElement("select");add.className="aa-select aa-add-group-select";
       const separate=document.createElement("option");separate.value="new";separate.textContent="New assessment";add.appendChild(separate);
-      for(let i=0;i<26;i++){
-        const letter=String.fromCharCode(65+i),o=document.createElement("option");
-        o.value="group:"+letter;o.textContent="Group "+letter;add.appendChild(o);
+      for(let i=1;i<=3;i++){
+        const o=document.createElement("option");
+        o.value="group:"+i;o.textContent="Multipart "+i;add.appendChild(o);
       }
       return{item,cb,add,row:null};
     });
