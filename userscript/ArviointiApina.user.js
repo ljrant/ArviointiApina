@@ -97,7 +97,7 @@
   }
 
   function passThresholdForCourse(c){
-    const map=currentBoundaries(c),key=c?.grading?.presetKey;
+    const map=currentBoundaries(c),key=c?.grading?.presetKey||presetForCourse(c);
     const preset=GRADE_PRESETS[key];
     const grade=preset?.passGrade||c?.grading?.passGrade||inferredPassGrade(map);
     const v=num(map?.[grade]);
@@ -180,7 +180,7 @@
       db.courses[id].grading.presetKey="custom";
       db.courses[id].grading.customBoundaries=custom;
       db.courses[id].grading.customName=options.customName||"Custom";
-      db.courses[id].grading.passGrade=inferredPassGrade(custom);
+      db.courses[id].grading.passGrade=options.passGrade||inferredPassGrade(custom);
     }
     db.settings.activeCourseId=id;save();return db.courses[id];
   }
@@ -228,6 +228,7 @@
       }));
       importRow.appendChild(importBtn);
 
+      let passGradeHint=GRADE_PRESETS.finnish.passGrade;
       const refresh=()=>{
         const p=preset.value==="custom"?null:GRADE_PRESETS[preset.value];
         if(preset.value==="custom"){
@@ -235,7 +236,8 @@
         }else area.value=JSON.stringify(p.boundaries,null,2);
         let boundaries={};
         try{boundaries=validateBoundaries(JSON.parse(area.value))}catch(_){}
-        const passGrade=p?.passGrade||inferredPassGrade(boundaries);
+        const passGrade=p?.passGrade||passGradeHint||inferredPassGrade(boundaries);
+        passGradeHint=passGrade;
         const threshold=num(boundaries?.[passGrade]);
         const pass=Number.isFinite(threshold)?threshold:(p?.passThreshold??50);
         passSlider.value=String(Math.round(pass));passNumber.value=String(Math.round(pass));
@@ -244,7 +246,8 @@
         try{
           const boundaries=validateBoundaries(JSON.parse(area.value));
           const p=preset.value==="custom"?null:GRADE_PRESETS[preset.value];
-          const passGrade=p?.passGrade||inferredPassGrade(boundaries);
+          const passGrade=p?.passGrade||passGradeHint||inferredPassGrade(boundaries);
+          passGradeHint=passGrade;
           const adjusted=adjustBoundariesToPass(boundaries,passGrade,value);
           area.value=JSON.stringify(adjusted,null,2);
           preset.value="custom";
@@ -268,7 +271,7 @@
           if(selectedPreset!=="custom"&&JSON.stringify(boundaries)===JSON.stringify(GRADE_PRESETS[selectedPreset].boundaries)){
             c=createCourse(name.value.trim(),{presetKey:selectedPreset,missingPolicy:missing.value});
           }else{
-            c=createCourse(name.value.trim(),{presetKey:"finnish",missingPolicy:missing.value,boundaries,customName:selectedPreset==="custom"?"Custom":GRADE_PRESETS[selectedPreset]?.name+" (edited)"});
+            c=createCourse(name.value.trim(),{presetKey:"finnish",missingPolicy:missing.value,boundaries,customName:selectedPreset==="custom"?"Custom":GRADE_PRESETS[selectedPreset]?.name+" (edited)",passGrade:passGradeHint});
           }
           close(c);
         }catch(e){alert("Invalid grade boundaries: "+e.message)}
@@ -1697,7 +1700,7 @@
     const syncPass=()=>{const v=Math.round(passThresholdForCourse(c));passSlider.value=String(v);passNumber.value=String(v)};
     const applyPass=value=>{
       try{
-        const boundaries=currentBoundaries(c),p=GRADE_PRESETS[c.grading.presetKey],passGrade=p?.passGrade||c.grading.passGrade||inferredPassGrade(boundaries);
+        const boundaries=currentBoundaries(c),p=GRADE_PRESETS[c.grading.presetKey||presetForCourse(c)],passGrade=p?.passGrade||c.grading.passGrade||inferredPassGrade(boundaries);
         c.grading.customBoundaries=adjustBoundariesToPass(boundaries,passGrade,value);
         c.grading.system="custom";c.grading.presetKey="custom";c.grading.passGrade=passGrade;c.grading.customName="Custom";
         c.updatedAt=now();save();render();
