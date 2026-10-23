@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ArviointiApina BETA
 // @namespace    https://github.com/ljrant/ArviointiApina
-// @version      0.12.0-beta.1
+// @version      0.13.0-beta.1
 // @description  BETA: OmaAbitti + Google Forms result collector and weighted course gradebook.
 // @match        *://*/*
 // @grant        GM_getValue
@@ -24,15 +24,14 @@
   "use strict";
 
   const KEY="arviointiapina_userscript_beta_v1";
-  const APP_VERSION="0.12.0-beta.1";
+  const APP_VERSION="0.13.0-beta.1";
   const APP_NAME="ArviointiApina BETA";
   const FINNISH={"10":90,"9½":85,"9":80,"8½":75,"8":70,"7½":65,"7":60,"6½":55,"6":50,"5½":45,"5":40,"4½":30,"4":0};
   const IB={"7":85,"6":70,"5":55,"4":40,"3":25,"2":10,"1":0};
   const GRADE_PRESETS={
-    finnish:{name:"Finnish 4–10",system:"finnish",boundaries:{...FINNISH}},
-    ib:{name:"IB 1–7",system:"ib",boundaries:{...IB}},
-    af:{name:"A–F (90/80/70/60/50)",system:"custom",boundaries:{"A":90,"B":80,"C":70,"D":60,"E":50,"F":0}},
-    pass50:{name:"Pass / Fail (50%)",system:"custom",boundaries:{"Pass":50,"Fail":0}}
+    finnish:{name:"Finnish 4–10",system:"finnish",passGrade:"5",passThreshold:40,boundaries:{...FINNISH}},
+    ib:{name:"IB 1–7",system:"ib",passGrade:"4",passThreshold:40,boundaries:{...IB}},
+    pass50:{name:"Pass / Fail",system:"custom",passGrade:"Pass",passThreshold:50,boundaries:{"Pass":50,"Fail":0}}
   };
   const IS_ABITTI=location.hostname==="oma.abitti.fi"&&location.pathname.startsWith("/school/review/");
   const IS_GRADING_LIST=location.hostname==="oma.abitti.fi"&&/^\/school\/grading\/?$/.test(location.pathname);
@@ -72,7 +71,7 @@
   }
 
 
-  function fresh(){return{version:1,settings:{activeCourseId:null,activeTab:"gradebook",panelOpen:null,panelCompact:null,gradingListSort:"date-desc",gradingListSchoolYear:null,gradingListNameFilter:""},courses:{}}}
+  function fresh(){return{version:1,settings:{activeCourseId:null,activeTab:"gradebook",panelOpen:null,panelCompact:null,gradingListSort:"date-desc",gradingListSchoolYear:null,gradingListNameFilter:"",gradingManagerCollapsed:false,launcherDocked:false},courses:{}}}
   function load(){try{const raw=GM_getValue(KEY,"");if(!raw)return fresh();const x=typeof raw==="string"?JSON.parse(raw):raw;return{...fresh(),...x,settings:{...fresh().settings,...(x.settings||{})},courses:x.courses||{}}}catch(e){console.error(e);return fresh()}}
   let db=load();
   const save=()=>GM_setValue(KEY,JSON.stringify(db));
@@ -89,6 +88,37 @@
       if(!Number.isFinite(value)||value<0||value>100)throw new Error("Every threshold must be between 0 and 100.");
       out[label]=value;
     }
+    return out;
+  }
+
+  function inferredPassGrade(boundaries){
+    const entries=Object.entries(boundaries||{}).map(([g,t])=>[g,num(t)]).filter(([,t])=>Number.isFinite(t)&&t>0).sort((a,b)=>a[1]-b[1]);
+    return entries[0]?.[0]||Object.keys(boundaries||{})[0]||"";
+  }
+
+  function passThresholdForCourse(c){
+    const map=currentBoundaries(c),key=c?.grading?.presetKey;
+    const preset=GRADE_PRESETS[key];
+    const grade=preset?.passGrade||c?.grading?.passGrade||inferredPassGrade(map);
+    const v=num(map?.[grade]);
+    return Number.isFinite(v)?v:50;
+  }
+
+  function adjustBoundariesToPass(boundaries,passGrade,newPass){
+    const original=validateBoundaries(boundaries);
+    const oldPass=num(original[passGrade]);
+    if(!Number.isFinite(oldPass)||oldPass<=0||oldPass>=100)throw new Error("A pass reference grade could not be determined.");
+    const target=Math.max(0,Math.min(100,num(newPass)));
+    if(!Number.isFinite(target))throw new Error("Invalid pass percentage.");
+    const out={};
+    for(const [grade,raw] of Object.entries(original)){
+      const t=num(raw);
+      let v;
+      if(t<=oldPass)v=oldPass===0?t:(t/oldPass)*target;
+      else v=target+((t-oldPass)/(100-oldPass))*(100-target);
+      out[grade]=Math.round(v*100)/100;
+    }
+    out[passGrade]=target;
     return out;
   }
 
@@ -118,6 +148,7 @@
     else if(preset.system==="ib")c.grading.ibBoundaries={...preset.boundaries};
     else c.grading.customBoundaries={...preset.boundaries};
     c.grading.customName=preset.name;
+    c.grading.passGrade=preset.passGrade||inferredPassGrade(preset.boundaries);
   }
 
   function createCourse(name,options={}){
@@ -137,7 +168,8 @@
         finnishBoundaries:{...FINNISH},
         ibBoundaries:{...IB},
         customBoundaries:preset.system==="custom"?{...preset.boundaries}:{},
-        customName:preset.name
+        customName:preset.name,
+        passGrade:preset.passGrade||inferredPassGrade(preset.boundaries)
       },
       createdAt:now(),
       updatedAt:now()
@@ -148,6 +180,7 @@
       db.courses[id].grading.presetKey="custom";
       db.courses[id].grading.customBoundaries=custom;
       db.courses[id].grading.customName=options.customName||"Custom";
+      db.courses[id].grading.passGrade=inferredPassGrade(custom);
     }
     db.settings.activeCourseId=id;save();return db.courses[id];
   }
@@ -175,6 +208,12 @@
       missing.innerHTML='<option value="redistribute">Redistribute missing weight</option><option value="zero">Missing counts as zero</option>';
       missingLabel.appendChild(missing);
 
+      const passLabel=document.createElement("label");passLabel.textContent="Pass threshold %";
+      const passRow=document.createElement("div");passRow.className="aa-pass-row";
+      const passSlider=document.createElement("input");passSlider.type="range";passSlider.min="0";passSlider.max="100";passSlider.step="1";
+      const passNumber=document.createElement("input");passNumber.type="number";passNumber.min="0";passNumber.max="100";passNumber.step="1";passNumber.className="aa-input aa-pass-number";
+      passRow.append(passSlider,passNumber);passLabel.appendChild(passRow);
+
       const boundaryLabel=document.createElement("label");boundaryLabel.textContent="Grade boundaries (%)";
       const area=document.createElement("textarea");area.className="aa-area aa-boundary-area";boundaryLabel.appendChild(area);
 
@@ -190,16 +229,33 @@
       importRow.appendChild(importBtn);
 
       const refresh=()=>{
+        const p=preset.value==="custom"?null:GRADE_PRESETS[preset.value];
         if(preset.value==="custom"){
           if(!area.value.trim())area.value=JSON.stringify(GRADE_PRESETS.finnish.boundaries,null,2);
-          area.readOnly=false;
-        }else{
-          area.value=JSON.stringify(GRADE_PRESETS[preset.value].boundaries,null,2);
-          area.readOnly=false;
-        }
+        }else area.value=JSON.stringify(p.boundaries,null,2);
+        let boundaries={};
+        try{boundaries=validateBoundaries(JSON.parse(area.value))}catch(_){}
+        const passGrade=p?.passGrade||inferredPassGrade(boundaries);
+        const threshold=num(boundaries?.[passGrade]);
+        const pass=Number.isFinite(threshold)?threshold:(p?.passThreshold??50);
+        passSlider.value=String(Math.round(pass));passNumber.value=String(Math.round(pass));
       };
+      const applyPass=value=>{
+        try{
+          const boundaries=validateBoundaries(JSON.parse(area.value));
+          const p=preset.value==="custom"?null:GRADE_PRESETS[preset.value];
+          const passGrade=p?.passGrade||inferredPassGrade(boundaries);
+          const adjusted=adjustBoundariesToPass(boundaries,passGrade,value);
+          area.value=JSON.stringify(adjusted,null,2);
+          preset.value="custom";
+          passSlider.value=String(value);passNumber.value=String(value);
+        }catch(e){alert("Could not adjust pass threshold: "+e.message)}
+      };
+      passSlider.oninput=()=>{passNumber.value=passSlider.value};
+      passSlider.onchange=()=>applyPass(num(passSlider.value));
+      passNumber.onchange=()=>{const v=Math.max(0,Math.min(100,num(passNumber.value)));passSlider.value=String(v);applyPass(v)};
       preset.onchange=refresh;refresh();
-      form.append(nameLabel,presetLabel,missingLabel,boundaryLabel,importRow);body.appendChild(form);
+      form.append(nameLabel,presetLabel,missingLabel,passLabel,boundaryLabel,importRow);body.appendChild(form);
 
       const foot=document.createElement("div");foot.className="aa-modal-foot";
       const close=v=>{overlay.remove();resolve(v)};
@@ -933,7 +989,7 @@
 
   GM_addStyle(`
   #aa-root,#aa-root *{box-sizing:border-box;font-family:system-ui,-apple-system,Segoe UI,sans-serif}
-  #aa-launch{position:fixed;right:12px;bottom:12px;z-index:2147483647!important;display:block!important;visibility:visible!important;opacity:1!important;border:0;border-radius:999px;background:#24362f;color:#fff;padding:11px 14px;font-weight:700;cursor:pointer;box-shadow:0 5px 20px #0003}
+  #aa-launch-dock{position:fixed;right:12px;bottom:12px;z-index:2147483647!important;display:flex;align-items:stretch;box-shadow:0 5px 20px #0003;border-radius:999px;overflow:hidden}#aa-launch{display:block!important;visibility:visible!important;opacity:1!important;border:0;background:#24362f;color:#fff;padding:11px 14px;font-weight:700;cursor:pointer}#aa-dock-toggle{border:0;border-left:1px solid #ffffff33;background:#24362f;color:#fff;padding:0 7px;cursor:pointer;font-weight:800}#aa-launch-dock.docked{right:0;border-radius:10px 0 0 10px}#aa-launch-dock.docked #aa-launch{padding:10px 7px}#aa-launch-dock.docked #aa-dock-toggle{padding:0 4px}
   #aa-panel{position:fixed;right:10px;top:10px;bottom:10px;width:min(900px,calc(100vw - 20px));z-index:2147483647;background:#fff;color:#172026;border:1px solid #cfd8d4;border-radius:12px;box-shadow:0 18px 50px #0004;display:flex;flex-direction:column;overflow:hidden;font-size:13px}
   #aa-panel.compact{width:340px;top:56px}.aa-head{display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding:9px;border-bottom:1px solid #dde4e0;background:#f5f8f6}.aa-title{font-weight:800;margin-right:auto}
   .aa-btn,.aa-input,.aa-select,.aa-area{border:1px solid #bbc8c2;border-radius:7px;background:#fff;color:#172026;padding:6px 8px;font-size:12px}.aa-btn{cursor:pointer}.aa-btn.primary{background:#275d4e;border-color:#275d4e;color:#fff}.aa-btn.danger{color:#9a2626}
@@ -943,12 +999,13 @@
   .aa-score{cursor:pointer;text-decoration:underline dotted}.aa-card{border:1px solid #dde4e0;background:#fafcfb;border-radius:9px;padding:9px;margin-bottom:8px}.aa-card h3{margin:0 0 7px;font-size:14px}.aa-area{width:100%;min-height:170px;font-family:ui-monospace,Consolas,monospace}
   .aa-mini{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:6px;align-items:center;padding:6px 2px;border-bottom:1px solid #edf1ef}.aa-mini-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.aa-empty{text-align:center;color:#6a7871;padding:25px}\n  .aa-modal-overlay{position:fixed;inset:0;z-index:2147483647;background:#0007;display:flex;align-items:center;justify-content:center;padding:18px}\n  .aa-modal{width:min(920px,96vw);max-height:90vh;display:flex;flex-direction:column;background:#fff;color:#172026;border:1px solid #87958f;border-radius:10px;box-shadow:0 18px 60px #0006;overflow:hidden}\n  .aa-modal-head{padding:10px 12px;font-weight:800;border-bottom:1px solid #dde4e0;background:#f5f8f6}.aa-modal-body{padding:10px 12px;overflow:auto}.aa-modal-foot{padding:9px 12px;display:flex;justify-content:flex-end;gap:6px;border-top:1px solid #dde4e0;background:#fafcfb}\n  .aa-import-table td,.aa-import-table th{white-space:normal}.aa-row-disabled{opacity:.48}.aa-result-input{width:85px}
   .aa-destination-options{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px;margin-top:10px}.aa-destination-card{display:flex;flex-direction:column;gap:4px;text-align:left;border:1px solid #bbc8c2;border-radius:9px;background:#fff;color:#172026;padding:12px;cursor:pointer}.aa-destination-card:hover{background:#f5f8f6;border-color:#7f938a}.aa-destination-card strong{font-size:13px}.aa-destination-card span{font-size:11px;color:#6a7871}
-  #aa-grading-manager{margin:10px 0 14px;border:1px solid #aebbb5;border-radius:8px;background:#fff;color:#172026;font:12px system-ui,-apple-system,Segoe UI,sans-serif;overflow:hidden}.aa-manager-bar{display:flex;align-items:center;gap:7px;flex-wrap:wrap;padding:8px;background:#f5f8f6;border-bottom:1px solid #d7dfdb}.aa-manager-table{width:100%;border-collapse:collapse}.aa-manager-table th,.aa-manager-table td{padding:7px 8px;border-bottom:1px solid #e1e6e3;text-align:left;vertical-align:middle}.aa-manager-table th{background:#fafcfb}.aa-manager-exam{min-width:260px;font-weight:600}.aa-manager-select{min-width:185px}.aa-manager-select .aa-batch-check{margin-right:8px}.aa-add-group-select{min-width:145px}.aa-manager-select .aa-batch-check{margin-right:7px}.aa-manager-courses{min-width:280px}.aa-course-chip{display:inline-block;margin:2px 5px 2px 0;padding:4px 7px;border:1px solid #9dafaa;border-radius:999px;background:#f7faf8;color:#24362f;cursor:pointer;font-size:11px}.aa-course-chip:hover{background:#edf4f0}.aa-placement-table{margin-top:10px}.aa-placement-card{margin-top:10px}.aa-placement-title{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:8px}.aa-placement-title label{display:flex;align-items:center;gap:6px}.aa-sortable-head{cursor:pointer;user-select:none}.aa-sortable-head:hover{background:#eef4f1!important}.aa-sortable-head.active{font-weight:800}.aa-sort-arrow{font-size:10px;white-space:nowrap}.aa-gradebook-search{min-width:190px}.aa-gradebook-head-row{display:flex;align-items:center;justify-content:space-between;gap:5px}.aa-sort-icon{border:0;background:transparent;color:#52635b;cursor:pointer;font-size:10px;padding:1px 2px;line-height:1}.aa-sort-icon:hover{color:#111}.aa-table th.active-sort{background:#eef4f1}.aa-header-weight{width:52px;margin:2px 3px 0;padding:2px 3px;border:1px solid #b7c4be;border-radius:4px;font-size:10px}.aa-student-weight-wrap{display:flex;align-items:center;gap:3px;margin-top:3px}.aa-student-weight{width:48px;padding:2px 3px;border:1px solid #c6d0cb;border-radius:4px;font-size:10px}.aa-exam-name-filter{min-width:180px}.aa-direct-suggestions{margin-top:10px;display:flex;flex-direction:column;gap:6px}.aa-direct-suggestion{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px;border:1px solid #dde4e0;border-radius:7px;background:#fafcfb}.aa-student-picker-scroll{max-height:55vh;overflow:auto}.aa-modal-wide{width:min(1100px,94vw)!important}.aa-assessment-chip{display:inline-flex;align-items:center;gap:4px;margin:2px 5px 2px 0;padding:3px 5px;border:1px solid #ccd7d2;border-radius:999px;background:#f7faf8}.aa-assessment-chip button{border:0;background:transparent;color:#a33;cursor:pointer;font-weight:700;padding:0 2px}.aa-removed-student{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #e5ebe8}.aa-removed-student>span{flex:1}.aa-course-form{display:grid;gap:10px}.aa-course-form label{display:grid;gap:5px;font-weight:600}.aa-boundary-area{min-height:180px;font-family:ui-monospace,SFMono-Regular,Consolas,monospace!important}
+  #aa-grading-manager{margin:10px 0 14px;border:1px solid #aebbb5;border-radius:8px;background:#fff;color:#172026;font:12px system-ui,-apple-system,Segoe UI,sans-serif;overflow:hidden}.aa-manager-bar{display:flex;align-items:center;gap:7px;flex-wrap:wrap;padding:8px;background:#f5f8f6;border-bottom:1px solid #d7dfdb}.aa-manager-table{width:100%;border-collapse:collapse}.aa-manager-table th,.aa-manager-table td{padding:7px 8px;border-bottom:1px solid #e1e6e3;text-align:left;vertical-align:middle}.aa-manager-table th{background:#fafcfb}.aa-manager-exam{min-width:260px;font-weight:600}.aa-manager-select{min-width:185px}.aa-manager-select .aa-batch-check{margin-right:8px}.aa-add-group-select{min-width:145px}.aa-manager-select .aa-batch-check{margin-right:7px}.aa-manager-courses{min-width:280px}.aa-course-chip{display:inline-block;margin:2px 5px 2px 0;padding:4px 7px;border:1px solid #9dafaa;border-radius:999px;background:#f7faf8;color:#24362f;cursor:pointer;font-size:11px}.aa-course-chip:hover{background:#edf4f0}.aa-placement-table{margin-top:10px}.aa-placement-card{margin-top:10px}.aa-placement-title{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:8px}.aa-placement-title label{display:flex;align-items:center;gap:6px}.aa-sortable-head{cursor:pointer;user-select:none}.aa-sortable-head:hover{background:#eef4f1!important}.aa-sortable-head.active{font-weight:800}.aa-sort-arrow{font-size:10px;white-space:nowrap}.aa-gradebook-search{min-width:190px}.aa-gradebook-head-row{display:flex;align-items:center;justify-content:space-between;gap:5px}.aa-sort-icon{border:0;background:transparent;color:#52635b;cursor:pointer;font-size:10px;padding:1px 2px;line-height:1}.aa-sort-icon:hover{color:#111}.aa-table th.active-sort{background:#eef4f1}.aa-header-weight{width:52px;margin:2px 3px 0;padding:2px 3px;border:1px solid #b7c4be;border-radius:4px;font-size:10px}.aa-student-weight-wrap{display:flex;align-items:center;gap:3px;margin-top:3px}.aa-student-weight{width:48px;padding:2px 3px;border:1px solid #c6d0cb;border-radius:4px;font-size:10px}.aa-exam-name-filter{min-width:180px}.aa-direct-suggestions{margin-top:10px;display:flex;flex-direction:column;gap:6px}.aa-direct-suggestion{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px;border:1px solid #dde4e0;border-radius:7px;background:#fafcfb}.aa-student-picker-scroll{max-height:55vh;overflow:auto}.aa-modal-wide{width:min(1100px,94vw)!important}.aa-assessment-chip{display:inline-flex;align-items:center;gap:4px;margin:2px 5px 2px 0;padding:3px 5px;border:1px solid #ccd7d2;border-radius:999px;background:#f7faf8}.aa-assessment-chip button{border:0;background:transparent;color:#a33;cursor:pointer;font-weight:700;padding:0 2px}.aa-removed-student{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #e5ebe8}.aa-removed-student>span{flex:1}.aa-course-form{display:grid;gap:10px}.aa-pass-row{display:flex;align-items:center;gap:8px}.aa-pass-row input[type=range]{flex:1}.aa-pass-number{width:72px}.aa-pass-settings{display:grid;gap:5px;max-width:420px}.aa-add-exam-scroll{max-height:55vh;overflow:auto}.aa-add-exam-table th{position:sticky;top:0;background:#fff;z-index:1}.aa-manager-body[hidden]{display:none!important}.aa-course-form label{display:grid;gap:5px;font-weight:600}.aa-boundary-area{min-height:180px;font-family:ui-monospace,SFMono-Regular,Consolas,monospace!important}
 
   #aa-grading-batchbar{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin:10px 0;padding:9px;border:1px solid #9eaaa4;border-radius:8px;background:#f5f8f6;color:#172026;font:12px system-ui,-apple-system,Segoe UI,sans-serif}#aa-grading-batchbar .aa-batch-hint{flex:1 1 320px;color:#53615a}.aa-batch-col{width:120px;min-width:120px;text-align:center!important}.aa-batch-cell{vertical-align:middle}.aa-batch-check{margin-right:6px}.aa-batch-group{width:48px;padding:3px 5px;border:1px solid #aebbb5;border-radius:5px;text-transform:uppercase}.aa-batch-head .aa-batch-sub{font-size:10px;font-weight:400;color:#66746d}\n  `);
 
   let open=db.settings.panelOpen==null?IS_ABITTI:!!db.settings.panelOpen;
   let compact=db.settings.panelCompact==null?!IS_ABITTI:!!db.settings.panelCompact;
+  let launcherDocked=!!db.settings.launcherDocked;
   let root=null;
 
   // Persist panel state in GM storage so navigation/reloads do not close the gradebook.
@@ -971,10 +1028,13 @@
   function ensureRoot(){
     if(root)return;
     root=document.createElement("div");root.id="aa-root";
+    const dock=document.createElement("div");dock.id="aa-launch-dock";
     const l=document.createElement("button");l.id="aa-launch";l.textContent="Grades";
     l.title="Open/close ArviointiApina gradebook";
     l.onclick=()=>{setPanelState(!open,compact);render()};
-    root.appendChild(l);document.body.appendChild(root)
+    const d=document.createElement("button");d.id="aa-dock-toggle";d.type="button";d.title="Minimize/restore launcher";
+    d.onclick=e=>{e.stopPropagation();launcherDocked=!launcherDocked;db.settings.launcherDocked=launcherDocked;save();render()};
+    dock.append(l,d);root.appendChild(dock);document.body.appendChild(root)
   }
   function ensureCourse(){if(db.settings.activeCourseId&&db.courses[db.settings.activeCourseId])return;db.settings.activeCourseId=Object.keys(db.courses)[0]||null;save()}
 
@@ -984,7 +1044,10 @@
     if(launcher){
       launcher.style.display="block";
       launcher.setAttribute("aria-pressed",open?"true":"false");
-      launcher.textContent=open?"Grades ✓":"Grades";
+      launcher.textContent=launcherDocked?"G":(open?"Grades ✓":"Grades");
+      root.querySelector("#aa-launch-dock")?.classList.toggle("docked",launcherDocked);
+      const dockToggle=root.querySelector("#aa-dock-toggle");
+      if(dockToggle)dockToggle.textContent=launcherDocked?"‹":"›";
     }
     root.querySelector("#aa-panel")?.remove();
     if(!open){
@@ -1147,11 +1210,11 @@
 
   async function openAddExamDialog(c){
     const overlay=document.createElement("div");overlay.className="aa-modal-overlay";
-    const modal=document.createElement("div");modal.className="aa-modal";
-    const head=document.createElement("div");head.className="aa-modal-head";head.textContent="Add OmaAbitti exam";
+    const modal=document.createElement("div");modal.className="aa-modal aa-modal-wide";
+    const head=document.createElement("div");head.className="aa-modal-head";head.textContent="Add OmaAbitti exams";
     const body=document.createElement("div");body.className="aa-modal-body";
     const note=document.createElement("div");note.className="aa-muted aa-small";
-    note.textContent="Suggestions are ranked against the active course name. You can also paste an OmaAbitti review/grading URL or held-exam code.";
+    note.textContent="Select one or more held exams. Use Multipart 1–3 to combine selected exams into the same assessment. You can also paste a review/grading URL.";
     body.appendChild(note);
 
     const manual=document.createElement("div");manual.className="aa-toolbar";manual.style.marginTop="10px";
@@ -1163,69 +1226,73 @@
     },"primary");
     manual.append(urlInput,addManual);body.appendChild(manual);
 
-    const searchBar=document.createElement("div");searchBar.className="aa-toolbar";searchBar.style.marginTop="8px";
-    const examSearch=document.createElement("input");examSearch.className="aa-input aa-exam-name-filter";examSearch.style.flex="1";examSearch.placeholder="Filter exams by name, e.g. HL";
-    searchBar.appendChild(examSearch);body.appendChild(searchBar);
+    const controls=document.createElement("div");controls.className="aa-toolbar";
+    const examSearch=document.createElement("input");examSearch.className="aa-input aa-exam-name-filter";examSearch.placeholder="Filter exams by name, e.g. HL";
+    const schoolYear=document.createElement("select");schoolYear.className="aa-select";
+    controls.append(examSearch,schoolYear);body.appendChild(controls);
 
-    const suggestions=document.createElement("div");suggestions.className="aa-direct-suggestions";
-    suggestions.innerHTML="<div class='aa-muted'>Loading suggestions…</div>";body.appendChild(suggestions);
+    const wrap=document.createElement("div");wrap.className="aa-table-wrap aa-add-exam-scroll";
+    const table=document.createElement("table");table.className="aa-table aa-add-exam-table";
+    table.innerHTML="<thead><tr><th></th><th>Exam</th><th>Date</th><th>Add / multipart</th></tr></thead>";
+    const tbody=document.createElement("tbody");table.appendChild(tbody);wrap.appendChild(table);body.appendChild(wrap);
 
     const foot=document.createElement("div");foot.className="aa-modal-foot";const close=()=>overlay.remove();
-    foot.appendChild(btn("Close",close));modal.append(head,body,foot);overlay.appendChild(modal);document.body.appendChild(overlay);
+    const addSelected=btn("Add selected",async()=>{},"primary");
+    foot.append(btn("Close",close),addSelected);modal.append(head,body,foot);overlay.appendChild(modal);document.body.appendChild(overlay);
     overlay.onclick=ev=>{if(ev.target===overlay)close()};
 
     try{
-      const meta=await gradingHeldExamMeta();
-      const currentYear=schoolYearForTimestamp(Date.now());
+      const meta=await gradingHeldExamMeta(),currentYear=schoolYearForTimestamp(Date.now());
       const candidates=[...meta.values()].map(x=>{
         const dateValue=parseGradingListDate(x.eventDate);
-        return{x,score:similarity(c.name,x.title||""),dateValue,schoolYear:schoolYearForTimestamp(dateValue)};
+        const code=String(x.schoolAnonCode||x.uuid||"").trim();
+        return{x,code,dateValue,year:schoolYearForTimestamp(dateValue),score:similarity(c.name,x.title||"")};
+      }).filter(v=>v.code);
+
+      const years=[...new Set(candidates.map(v=>v.year).filter(Boolean))].sort((a,b)=>b.localeCompare(a,"fi"));
+      const all=document.createElement("option");all.value="__all__";all.textContent="All school years";schoolYear.appendChild(all);
+      for(const y of years){const o=document.createElement("option");o.value=y;o.textContent=y;schoolYear.appendChild(o)}
+      schoolYear.value=years.includes(currentYear)?currentYear:(years[0]||"__all__");
+
+      const states=candidates.map(r=>{
+        const cb=document.createElement("input");cb.type="checkbox";
+        const add=document.createElement("select");add.className="aa-select aa-add-group-select";
+        const separate=document.createElement("option");separate.value="new";separate.textContent="New assessment";add.appendChild(separate);
+        for(let i=1;i<=3;i++){const o=document.createElement("option");o.value="group:"+i;o.textContent="Multipart "+i;add.appendChild(o)}
+        return{r,cb,add};
       });
 
-      const renderSuggestions=()=>{
-        const needle=norm(examSearch.value);
-        let shown;
-        if(needle){
-          shown=candidates
-            .filter(v=>norm(v.x.title||"").includes(needle))
-            .sort((a,b)=>(b.dateValue||0)-(a.dateValue||0))
-            .slice(0,50);
-        }else{
-          shown=candidates
-            .filter(v=>v.schoolYear===currentYear||v.score>=.45)
-            .sort((a,b)=>(b.score-a.score)||((b.dateValue||0)-(a.dateValue||0)))
-            .slice(0,12);
+      const draw=()=>{
+        tbody.innerHTML="";
+        const needle=norm(examSearch.value),year=schoolYear.value;
+        const shown=states.filter(st=>{
+          const nameOk=!needle||norm(st.r.x.title||"").includes(needle);
+          const yearOk=year==="__all__"||st.r.year===year;
+          return nameOk&&yearOk;
+        }).sort((a,b)=>(b.r.score-a.r.score)||((b.r.dateValue||0)-(a.r.dateValue||0)));
+        for(const st of shown){
+          const tr=document.createElement("tr"),pick=document.createElement("td"),name=document.createElement("td"),date=document.createElement("td"),dest=document.createElement("td");
+          pick.appendChild(st.cb);name.textContent=st.r.x.title||"OmaAbitti exam";date.textContent=formatGradingListDate(st.r.dateValue,"—");dest.appendChild(st.add);
+          tr.append(pick,name,date,dest);tbody.appendChild(tr);
         }
-
-        suggestions.innerHTML="";
-        if(!shown.length){
-          suggestions.innerHTML="<div class='aa-muted'>No exams match this name filter.</div>";
-          return;
-        }
-
-        for(const r of shown){
-          const row=document.createElement("div");row.className="aa-direct-suggestion";
-          const text=document.createElement("div");
-          const title=document.createElement("strong");title.textContent=r.x.title||"OmaAbitti exam";
-          const metaText=document.createElement("div");metaText.className="aa-muted aa-small";
-          metaText.textContent=formatGradingListDate(r.dateValue,"")+(needle?"":" · match "+Math.round(r.score*100)+"%");
-          text.append(title,metaText);
-          const add=btn("Add",async()=>{
-            const code=String(r.x.schoolAnonCode||r.x.uuid||"").trim();if(!code)return;
-            add.disabled=true;
-            try{await addHeldExamDirectly(c,code,r.x.title||"OmaAbitti exam")}
-            catch(e){alert("Could not add exam: "+e.message)}
-            finally{add.disabled=false}
-            overlay.remove();
-          },"primary");
-          row.append(text,add);suggestions.appendChild(row);
-        }
+        if(!shown.length){const tr=document.createElement("tr"),td=document.createElement("td");td.colSpan=4;td.className="aa-empty";td.textContent="No exams match the current filters.";tr.appendChild(td);tbody.appendChild(tr)}
       };
+      examSearch.oninput=draw;schoolYear.onchange=draw;draw();
 
-      examSearch.oninput=renderSuggestions;
-      renderSuggestions();
+      addSelected.onclick=async()=>{
+        const selected=states.filter(st=>st.cb.checked).map(st=>({
+          title:st.r.x.title||"OmaAbitti exam",
+          reviewPath:"/school/review/"+encodeURIComponent(st.r.code),
+          group:st.add.value.startsWith("group:")?st.add.value.slice(6):""
+        }));
+        if(!selected.length)return alert("Select at least one exam.");
+        addSelected.disabled=true;addSelected.textContent="Adding…";
+        try{await importGradingListBatch(selected,c);overlay.remove()}
+        catch(e){alert("Could not add selected exams: "+e.message)}
+        finally{addSelected.disabled=false;addSelected.textContent="Add selected"}
+      };
     }catch(e){
-      suggestions.innerHTML="<div class='aa-muted'>Could not load OmaAbitti exam suggestions. You can still paste an exam URL above.</div>";
+      tbody.innerHTML="<tr><td colspan='4' class='aa-empty'>Could not load held exams. You can still paste an exam URL above.</td></tr>";
     }
   }
 
@@ -1493,7 +1560,8 @@
       if(!(m>0)||!(w>=0))return alert("Invalid maximum or weight.");
       const id=uid("assessment");c.assessments[id]={id,name:n.trim(),maxPoints:m,defaultWeight:w,type:"manual",source:{type:"manual"},results:{},createdAt:now(),updatedAt:now()};save();render();
     }));
-    if(IS_ABITTI)bar.appendChild(btn("Import current OmaAbitti exam",importDialog,"primary"));
+    bar.appendChild(btn("+ Add exam",()=>openAddExamDialog(c),"primary"));
+    if(IS_ABITTI)bar.appendChild(btn("Import current OmaAbitti exam",importDialog));
     const selected=new Set();
     bar.appendChild(btn("Combine selected as multipart",()=>{
       const list=[...selected].map(id=>c.assessments[id]).filter(Boolean);
@@ -1620,6 +1688,25 @@
     miss.onchange=()=>{c.grading.missingPolicy=miss.value;c.updatedAt=now();save();render()};
 
     calcCard.append("Boundary preset: ",preset,document.createElement("br"),document.createElement("br"),"Missing result: ",miss);
+
+    const passWrap=document.createElement("div");passWrap.className="aa-pass-settings";
+    const passTitle=document.createElement("div");passTitle.textContent="Pass threshold %";
+    const passRow=document.createElement("div");passRow.className="aa-pass-row";
+    const passSlider=document.createElement("input");passSlider.type="range";passSlider.min="0";passSlider.max="100";passSlider.step="1";
+    const passNumber=document.createElement("input");passNumber.type="number";passNumber.min="0";passNumber.max="100";passNumber.step="1";passNumber.className="aa-input aa-pass-number";
+    const syncPass=()=>{const v=Math.round(passThresholdForCourse(c));passSlider.value=String(v);passNumber.value=String(v)};
+    const applyPass=value=>{
+      try{
+        const boundaries=currentBoundaries(c),p=GRADE_PRESETS[c.grading.presetKey],passGrade=p?.passGrade||c.grading.passGrade||inferredPassGrade(boundaries);
+        c.grading.customBoundaries=adjustBoundariesToPass(boundaries,passGrade,value);
+        c.grading.system="custom";c.grading.presetKey="custom";c.grading.passGrade=passGrade;c.grading.customName="Custom";
+        c.updatedAt=now();save();render();
+      }catch(e){alert("Could not adjust pass threshold: "+e.message)}
+    };
+    passSlider.oninput=()=>{passNumber.value=passSlider.value};
+    passSlider.onchange=()=>applyPass(num(passSlider.value));
+    passNumber.onchange=()=>applyPass(Math.max(0,Math.min(100,num(passNumber.value))));
+    syncPass();passRow.append(passSlider,passNumber);passWrap.append(passTitle,passRow);calcCard.append(document.createElement("br"),passWrap);
     parent.appendChild(calcCard);
 
     const boundaryCard=document.createElement("div");boundaryCard.className="aa-card";
@@ -1658,7 +1745,7 @@
         try{
           const parsed=JSON.parse(await file.text());
           const boundaries=validateBoundaries(parsed.boundaries||parsed);
-          c.grading.system="custom";c.grading.presetKey="custom";c.grading.customBoundaries=boundaries;c.grading.customName=String(parsed.name||file.name||"Custom");
+          c.grading.system="custom";c.grading.presetKey="custom";c.grading.customBoundaries=boundaries;c.grading.customName=String(parsed.name||file.name||"Custom");c.grading.passGrade=inferredPassGrade(boundaries);
           c.updatedAt=now();save();render();
         }catch(e){alert("Could not import grade boundaries: "+e.message)}
       }))
@@ -1922,8 +2009,14 @@
           target.defaultWeight=importWeight;
         }
 
-        const doc=await loadRenderedSameOriginPage(item.reviewPath,"#scoreTable tbody tr.student",15000);
-        const detected=detectedExamFromReviewDocument(doc,item.reviewPath,item.title);
+        let detected=null;
+        if(location.hostname==="oma.abitti.fi"){
+          const doc=await loadRenderedSameOriginPage(item.reviewPath,"#scoreTable tbody tr.student",15000);
+          detected=detectedExamFromReviewDocument(doc,item.reviewPath,item.title);
+        }else{
+          const code=decodeURIComponent(item.reviewPath.split("/").filter(Boolean).pop()||"");
+          try{detected=await detectedExamFromHeldExamCode(code,item.title)}catch(_){}
+        }
         if(!detected?.students.length){failed++;continue}
 
         const studentSelection=await chooseImportStudents(c,detected);
@@ -2096,6 +2189,10 @@
     const manager=document.createElement("div");manager.id="aa-grading-manager";manager.dataset.signature=signature;
     const bar=document.createElement("div");bar.className="aa-manager-bar";
     const brand=document.createElement("strong");brand.textContent=APP_NAME;
+    const managerBody=document.createElement("div");managerBody.className="aa-manager-body";
+    const toggleManager=btn(db.settings.gradingManagerCollapsed?"Show":"Hide",()=>{
+      db.settings.gradingManagerCollapsed=!db.settings.gradingManagerCollapsed;save();setupGradingListPicker(true);
+    });
     const courseSelect=document.createElement("select");courseSelect.className="aa-select";
     for(const crs of Object.values(db.courses).sort((a,b)=>a.name.localeCompare(b.name,"fi"))){
       const o=document.createElement("option");o.value=crs.id;o.textContent=crs.name;o.selected=crs.id===db.settings.activeCourseId;courseSelect.appendChild(o);
@@ -2145,8 +2242,10 @@
       finally{importBtn.disabled=false;importBtn.textContent="Add selected to gradebook"}
     },"primary");
 
-    bar.append(brand,document.createTextNode("Course:"),courseSelect,addCourseBtn,document.createTextNode("School year:"),schoolYearSelect,examNameFilter,importBtn);
+    bar.append(brand,toggleManager,document.createTextNode("Course:"),courseSelect,addCourseBtn,document.createTextNode("School year:"),schoolYearSelect,examNameFilter,importBtn);
     manager.appendChild(bar);
+    managerBody.hidden=!!db.settings.gradingManagerCollapsed;
+    manager.appendChild(managerBody);
 
     const table=document.createElement("table");table.className="aa-manager-table";
     const thead=document.createElement("thead"),headRow=document.createElement("tr");
@@ -2176,7 +2275,7 @@
       makeSortHeader("added","Added to courses")
     );
     thead.appendChild(headRow);table.appendChild(thead);
-    const tbody=document.createElement("tbody");table.appendChild(tbody);manager.appendChild(table);
+    const tbody=document.createElement("tbody");table.appendChild(tbody);managerBody.appendChild(table);
 
     const rowStates=items.map(item=>{
       const cb=document.createElement("input");cb.type="checkbox";cb.className="aa-batch-check";
