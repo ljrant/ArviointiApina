@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ArviointiApina BETA
 // @namespace    https://github.com/ljrant/ArviointiApina
-// @version      0.13.0-beta.1
+// @version      0.14.0-beta.1
 // @description  BETA: OmaAbitti + Google Forms result collector and weighted course gradebook.
 // @match        *://*/*
 // @grant        GM_getValue
@@ -24,7 +24,7 @@
   "use strict";
 
   const KEY="arviointiapina_userscript_beta_v1";
-  const APP_VERSION="0.13.0-beta.1";
+  const APP_VERSION="0.14.0-beta.1";
   const APP_NAME="ArviointiApina BETA";
   const FINNISH={"10":90,"9½":85,"9":80,"8½":75,"8":70,"7½":65,"7":60,"6½":55,"6":50,"5½":45,"5":40,"4½":30,"4":0};
   const IB={"7":85,"6":70,"5":55,"4":40,"3":25,"2":10,"1":0};
@@ -383,6 +383,7 @@
         email:row.querySelector(".email")?.textContent?.trim()||"",
         uuid:g?.getAttribute("data-student-uuid")||"",
         answerPaperId:g?.getAttribute("data-answer-paper-id")||"",
+        answerURL:row.querySelector(".answerPaperLink")?.getAttribute("href")||"",
         points:num(row.querySelector(".totalScore")?.textContent)
       };
     }).filter(x=>x.name||x.email||x.uuid||Number.isFinite(x.points));
@@ -556,6 +557,32 @@
     return{points:total,completedParts:completed,totalParts:a.parts.length};
   }
 
+  function abittiUrl(path){
+    if(!path)return"";
+    try{return new URL(path,"https://oma.abitti.fi").href}catch(_){return""}
+  }
+
+  function heldExamCodeFromSource(source){
+    const path=String(source?.reviewPath||"");
+    const m=path.match(/\/school\/review\/([^/?#]+)/);
+    return m?decodeURIComponent(m[1]):"";
+  }
+
+  function answerUrlForResult(source,result){
+    if(result?.answerURL)return abittiUrl(result.answerURL);
+    const examCode=heldExamCodeFromSource(source),studentUuid=String(result?.sourceAbittiUuid||"").trim();
+    if(examCode&&studentUuid){
+      return "https://oma.abitti.fi/exam-api/grading/results/"+encodeURIComponent(examCode)+"/"+encodeURIComponent(studentUuid);
+    }
+    return"";
+  }
+
+  function sourceLink(source,label="Exam"){
+    const href=abittiUrl(source?.reviewPath);
+    if(!href)return null;
+    const a=document.createElement("a");a.className="aa-abitti-link";a.href=href;a.target="_blank";a.rel="noopener";a.textContent=label;a.title="Open original exam in OmaAbitti";return a;
+  }
+
   function assessmentResultCount(a){
     if(!hasParts(a))return Object.keys(a.results||{}).length;
     const ids=new Set();
@@ -635,7 +662,7 @@
     const name=document.querySelector("h1.exam-name")?.textContent?.trim()||document.querySelector(".exam-name")?.textContent?.trim()||document.title||"OmaAbitti exam";
     const students=[...document.querySelectorAll("#scoreTable tbody tr.student")].map(row=>{
       const g=row.querySelector(".gradingText");
-      return{name:studentNameFromRow(row),email:row.querySelector(".email")?.textContent?.trim()||"",uuid:g?.getAttribute("data-student-uuid")||"",answerPaperId:g?.getAttribute("data-answer-paper-id")||"",points:num(row.querySelector(".totalScore")?.textContent)};
+      const answerLink=row.querySelector(".answerPaperLink");return{name:studentNameFromRow(row),email:row.querySelector(".email")?.textContent?.trim()||"",uuid:g?.getAttribute("data-student-uuid")||"",answerPaperId:g?.getAttribute("data-answer-paper-id")||"",answerURL:answerLink?.href||answerLink?.getAttribute("href")||"",points:num(row.querySelector(".totalScore")?.textContent)};
     }).filter(x=>x.name||x.email||x.uuid||Number.isFinite(x.points));
     const firstAnswer=document.querySelector("#scoreTable .answerPaperLink");
     const answerURL=firstAnswer?.href||firstAnswer?.getAttribute("href")||"";
@@ -731,7 +758,7 @@
         activateStudent(c,student);
       }
       attachIdentity(student,incoming);
-      results[student.id]={points:num(incoming.points),answerPaperId:incoming.answerPaperId||null,sourceName:incoming.name||"",sourceEmail:incoming.email||"",sourceAbittiUuid:incoming.uuid||"",importedAt:now()};
+      results[student.id]={points:num(incoming.points),answerPaperId:incoming.answerPaperId||null,answerURL:incoming.answerURL||"",sourceName:incoming.name||"",sourceEmail:incoming.email||"",sourceAbittiUuid:incoming.uuid||"",importedAt:now()};
       imported++;
     });
     return{created,matched,imported,skipped,skippedNotOnCourse};
@@ -1002,7 +1029,7 @@
   .aa-score{cursor:pointer;text-decoration:underline dotted}.aa-card{border:1px solid #dde4e0;background:#fafcfb;border-radius:9px;padding:9px;margin-bottom:8px}.aa-card h3{margin:0 0 7px;font-size:14px}.aa-area{width:100%;min-height:170px;font-family:ui-monospace,Consolas,monospace}
   .aa-mini{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:6px;align-items:center;padding:6px 2px;border-bottom:1px solid #edf1ef}.aa-mini-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.aa-empty{text-align:center;color:#6a7871;padding:25px}\n  .aa-modal-overlay{position:fixed;inset:0;z-index:2147483647;background:#0007;display:flex;align-items:center;justify-content:center;padding:18px}\n  .aa-modal{width:min(920px,96vw);max-height:90vh;display:flex;flex-direction:column;background:#fff;color:#172026;border:1px solid #87958f;border-radius:10px;box-shadow:0 18px 60px #0006;overflow:hidden}\n  .aa-modal-head{padding:10px 12px;font-weight:800;border-bottom:1px solid #dde4e0;background:#f5f8f6}.aa-modal-body{padding:10px 12px;overflow:auto}.aa-modal-foot{padding:9px 12px;display:flex;justify-content:flex-end;gap:6px;border-top:1px solid #dde4e0;background:#fafcfb}\n  .aa-import-table td,.aa-import-table th{white-space:normal}.aa-row-disabled{opacity:.48}.aa-result-input{width:85px}
   .aa-destination-options{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px;margin-top:10px}.aa-destination-card{display:flex;flex-direction:column;gap:4px;text-align:left;border:1px solid #bbc8c2;border-radius:9px;background:#fff;color:#172026;padding:12px;cursor:pointer}.aa-destination-card:hover{background:#f5f8f6;border-color:#7f938a}.aa-destination-card strong{font-size:13px}.aa-destination-card span{font-size:11px;color:#6a7871}
-  #aa-grading-manager{margin:10px 0 14px;border:1px solid #aebbb5;border-radius:8px;background:#fff;color:#172026;font:12px system-ui,-apple-system,Segoe UI,sans-serif;overflow:hidden}.aa-manager-bar{display:flex;align-items:center;gap:7px;flex-wrap:wrap;padding:8px;background:#f5f8f6;border-bottom:1px solid #d7dfdb}.aa-manager-table{width:100%;border-collapse:collapse}.aa-manager-table th,.aa-manager-table td{padding:7px 8px;border-bottom:1px solid #e1e6e3;text-align:left;vertical-align:middle}.aa-manager-table th{background:#fafcfb}.aa-manager-exam{min-width:260px;font-weight:600}.aa-manager-select{min-width:185px}.aa-manager-select .aa-batch-check{margin-right:8px}.aa-add-group-select{min-width:145px}.aa-manager-select .aa-batch-check{margin-right:7px}.aa-manager-courses{min-width:280px}.aa-course-chip{display:inline-block;margin:2px 5px 2px 0;padding:4px 7px;border:1px solid #9dafaa;border-radius:999px;background:#f7faf8;color:#24362f;cursor:pointer;font-size:11px}.aa-course-chip:hover{background:#edf4f0}.aa-placement-table{margin-top:10px}.aa-placement-card{margin-top:10px}.aa-placement-title{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:8px}.aa-placement-title label{display:flex;align-items:center;gap:6px}.aa-sortable-head{cursor:pointer;user-select:none}.aa-sortable-head:hover{background:#eef4f1!important}.aa-sortable-head.active{font-weight:800}.aa-sort-arrow{font-size:10px;white-space:nowrap}.aa-gradebook-search{min-width:190px}.aa-gradebook-head-row{display:flex;align-items:center;justify-content:space-between;gap:5px}.aa-sort-icon{border:0;background:transparent;color:#52635b;cursor:pointer;font-size:10px;padding:1px 2px;line-height:1}.aa-sort-icon:hover{color:#111}.aa-table th.active-sort{background:#eef4f1}.aa-header-weight{width:52px;margin:2px 3px 0;padding:2px 3px;border:1px solid #b7c4be;border-radius:4px;font-size:10px}.aa-student-weight-wrap{display:flex;align-items:center;gap:3px;margin-top:3px}.aa-student-weight{width:48px;padding:2px 3px;border:1px solid #c6d0cb;border-radius:4px;font-size:10px}.aa-exam-name-filter{min-width:180px}.aa-direct-suggestions{margin-top:10px;display:flex;flex-direction:column;gap:6px}.aa-direct-suggestion{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px;border:1px solid #dde4e0;border-radius:7px;background:#fafcfb}.aa-student-picker-scroll{max-height:55vh;overflow:auto}.aa-modal-wide{width:min(1100px,94vw)!important}.aa-assessment-chip{display:inline-flex;align-items:center;gap:4px;margin:2px 5px 2px 0;padding:3px 5px;border:1px solid #ccd7d2;border-radius:999px;background:#f7faf8}.aa-assessment-chip button{border:0;background:transparent;color:#a33;cursor:pointer;font-weight:700;padding:0 2px}.aa-removed-student{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #e5ebe8}.aa-removed-student>span{flex:1}.aa-course-form{display:grid;gap:10px}.aa-pass-row{display:flex;align-items:center;gap:8px}.aa-pass-row input[type=range]{flex:1}.aa-pass-number{width:72px}.aa-pass-settings{display:grid;gap:5px;max-width:420px}.aa-add-exam-scroll{max-height:55vh;overflow:auto}.aa-add-exam-table th{position:sticky;top:0;background:#fff;z-index:1}.aa-manager-body[hidden]{display:none!important}.aa-course-form label{display:grid;gap:5px;font-weight:600}.aa-boundary-area{min-height:180px;font-family:ui-monospace,SFMono-Regular,Consolas,monospace!important}
+  #aa-grading-manager{margin:10px 0 14px;border:1px solid #aebbb5;border-radius:8px;background:#fff;color:#172026;font:12px system-ui,-apple-system,Segoe UI,sans-serif;overflow:hidden}.aa-manager-bar{display:flex;align-items:center;gap:7px;flex-wrap:wrap;padding:8px;background:#f5f8f6;border-bottom:1px solid #d7dfdb}.aa-manager-table{width:100%;border-collapse:collapse}.aa-manager-table th,.aa-manager-table td{padding:7px 8px;border-bottom:1px solid #e1e6e3;text-align:left;vertical-align:middle}.aa-manager-table th{background:#fafcfb}.aa-manager-exam{min-width:260px;font-weight:600}.aa-manager-select{min-width:185px}.aa-manager-select .aa-batch-check{margin-right:8px}.aa-add-group-select{min-width:145px}.aa-manager-select .aa-batch-check{margin-right:7px}.aa-manager-courses{min-width:280px}.aa-course-chip{display:inline-block;margin:2px 5px 2px 0;padding:4px 7px;border:1px solid #9dafaa;border-radius:999px;background:#f7faf8;color:#24362f;cursor:pointer;font-size:11px}.aa-course-chip:hover{background:#edf4f0}.aa-placement-table{margin-top:10px}.aa-placement-card{margin-top:10px}.aa-placement-title{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:8px}.aa-placement-title label{display:flex;align-items:center;gap:6px}.aa-sortable-head{cursor:pointer;user-select:none}.aa-sortable-head:hover{background:#eef4f1!important}.aa-sortable-head.active{font-weight:800}.aa-sort-arrow{font-size:10px;white-space:nowrap}.aa-gradebook-search{min-width:190px}.aa-gradebook-head-row{display:flex;align-items:center;justify-content:space-between;gap:5px}.aa-sort-icon{border:0;background:transparent;color:#52635b;cursor:pointer;font-size:10px;padding:1px 2px;line-height:1}.aa-sort-icon:hover{color:#111}.aa-table th.active-sort{background:#eef4f1}.aa-header-weight{width:52px;margin:2px 3px 0;padding:2px 3px;border:1px solid #b7c4be;border-radius:4px;font-size:10px}.aa-student-weight-wrap{display:flex;align-items:center;gap:3px;margin-top:3px}.aa-student-weight{width:48px;padding:2px 3px;border:1px solid #c6d0cb;border-radius:4px;font-size:10px}.aa-exam-name-filter{min-width:180px}.aa-direct-suggestions{margin-top:10px;display:flex;flex-direction:column;gap:6px}.aa-direct-suggestion{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px;border:1px solid #dde4e0;border-radius:7px;background:#fafcfb}.aa-student-picker-scroll{max-height:55vh;overflow:auto}.aa-modal-wide{width:min(1100px,94vw)!important}.aa-assessment-chip{display:inline-flex;align-items:center;gap:4px;margin:2px 5px 2px 0;padding:3px 5px;border:1px solid #ccd7d2;border-radius:999px;background:#f7faf8}.aa-assessment-chip button{border:0;background:transparent;color:#a33;cursor:pointer;font-weight:700;padding:0 2px}.aa-removed-student{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #e5ebe8}.aa-removed-student>span{flex:1}.aa-course-form{display:grid;gap:10px}.aa-pass-row{display:flex;align-items:center;gap:8px}.aa-pass-row input[type=range]{flex:1}.aa-pass-number{width:72px}.aa-pass-settings{display:grid;gap:5px;max-width:420px}.aa-add-exam-scroll{max-height:55vh;overflow:auto}.aa-add-exam-table th{position:sticky;top:0;background:#fff;z-index:1}.aa-manager-body[hidden]{display:none!important}.aa-abitti-link{color:#1765c1;text-decoration:none}.aa-abitti-link:hover{text-decoration:underline}.aa-source-links,.aa-answer-links{margin-top:3px;line-height:1.25}.aa-modal-small{width:min(520px,94vw)!important}.aa-score-edit-form{display:grid;gap:10px}.aa-score-edit-form label{display:grid;gap:5px;font-weight:600}.aa-score-edit-links{font-size:12px}.aa-part-edit-table td:last-child{white-space:nowrap}.aa-course-form label{display:grid;gap:5px;font-weight:600}.aa-boundary-area{min-height:180px;font-family:ui-monospace,SFMono-Regular,Consolas,monospace!important}
 
   #aa-grading-batchbar{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin:10px 0;padding:9px;border:1px solid #9eaaa4;border-radius:8px;background:#f5f8f6;color:#172026;font:12px system-ui,-apple-system,Segoe UI,sans-serif}#aa-grading-batchbar .aa-batch-hint{flex:1 1 320px;color:#53615a}.aa-batch-col{width:120px;min-width:120px;text-align:center!important}.aa-batch-cell{vertical-align:middle}.aa-batch-check{margin-right:6px}.aa-batch-group{width:48px;padding:3px 5px;border:1px solid #aebbb5;border-radius:5px;text-transform:uppercase}.aa-batch-head .aa-batch-sub{font-size:10px;font-weight:400;color:#66746d}\n  `);
 
@@ -1346,7 +1373,15 @@
         if(!(v>=0)){alert("Invalid weight.");weight.value=a.defaultWeight;return}
         a.defaultWeight=v;a.updatedAt=now();c.updatedAt=now();save();draw();
       };
-      meta.append(weight,document.createTextNode("%"));th.appendChild(meta);hr.appendChild(th);
+      meta.append(weight,document.createTextNode("%"));th.appendChild(meta);
+      const sourceLinks=document.createElement("div");sourceLinks.className="aa-source-links aa-small";
+      if(hasParts(a)){
+        a.parts.forEach((p,i)=>{const link=sourceLink(p.source,"P"+(i+1)+" ↗");if(link){if(sourceLinks.childNodes.length)sourceLinks.appendChild(document.createTextNode(" · "));sourceLinks.appendChild(link)}});
+      }else{
+        const link=sourceLink(a.source,"Exam ↗");if(link)sourceLinks.appendChild(link);
+      }
+      if(sourceLinks.childNodes.length)th.appendChild(sourceLinks);
+      hr.appendChild(th);
     }
 
     hr.append(sortableHeader("Weighted","weighted"),sortableHeader("Grade","grade"));
@@ -1396,6 +1431,21 @@
           sp.textContent=r?fmt(num(r.points),2)+"/"+fmt(effectiveMax(a),2)+(hasParts(a)?" ("+(r.completedParts||0)+"/"+a.parts.length+" parts)":""):"—";
           sp.onclick=()=>hasParts(a)?editCompositeStudentResults(c,st,a):editResult(c,st,a);td.appendChild(sp);
 
+          const answerLinks=document.createElement("div");answerLinks.className="aa-answer-links aa-small";
+          if(hasParts(a)){
+            a.parts.forEach((p,i)=>{
+              const pr=p.results?.[st.id],href=answerUrlForResult(p.source,pr);
+              if(!href)return;
+              const link=document.createElement("a");link.className="aa-abitti-link";link.href=href;link.target="_blank";link.rel="noopener";link.textContent="P"+(i+1)+" answer ↗";
+              if(answerLinks.childNodes.length)answerLinks.appendChild(document.createTextNode(" · "));
+              answerLinks.appendChild(link);
+            });
+          }else{
+            const href=answerUrlForResult(a.source,a.results?.[st.id]);
+            if(href){const link=document.createElement("a");link.className="aa-abitti-link";link.href=href;link.target="_blank";link.rel="noopener";link.textContent="Answer ↗";answerLinks.appendChild(link)}
+          }
+          if(answerLinks.childNodes.length)td.appendChild(answerLinks);
+
           const weightWrap=document.createElement("div");weightWrap.className="aa-student-weight-wrap";
           const label=document.createElement("span");label.className="aa-muted aa-small";label.textContent="w";
           const wi=document.createElement("input");wi.className="aa-student-weight";wi.type="number";wi.min="0";wi.step="0.1";
@@ -1424,30 +1474,78 @@
     search.oninput=draw;draw();
   }
 
-  function editResult(c,s,a){const current=a.results?.[s.id]?.points??"",v=prompt(s.canonicalName+"\n"+a.name+"\n\nPoints (blank removes result):",current);if(v===null)return;if(!v.trim())delete a.results[s.id];else{const p=num(v);if(!Number.isFinite(p))return alert("Invalid score.");a.results[s.id]={...(a.results[s.id]||{}),points:p,editedAt:now()}}save();render()}
+  function editResult(c,st,a){
+    const result=a.results?.[st.id]||null;
+    const overlay=document.createElement("div");overlay.className="aa-modal-overlay";
+    const modal=document.createElement("div");modal.className="aa-modal aa-modal-small";
+    const head=document.createElement("div");head.className="aa-modal-head";head.textContent=st.canonicalName+" · "+a.name;
+    const body=document.createElement("div");body.className="aa-modal-body";
+    const form=document.createElement("div");form.className="aa-score-edit-form";
+    const label=document.createElement("label");label.textContent="Points";
+    const input=document.createElement("input");input.className="aa-input";input.value=result?.points??"";input.placeholder="blank = remove result";label.appendChild(input);form.appendChild(label);
+    const links=document.createElement("div");links.className="aa-score-edit-links";
+    const examLink=sourceLink(a.source,"Open exam in OmaAbitti ↗");if(examLink)links.appendChild(examLink);
+    const answerHref=answerUrlForResult(a.source,result);
+    if(answerHref){
+      if(examLink)links.appendChild(document.createTextNode(" · "));
+      const answer=document.createElement("a");answer.className="aa-abitti-link";answer.href=answerHref;answer.target="_blank";answer.rel="noopener";answer.textContent="Open student answer ↗";links.appendChild(answer);
+    }
+    form.appendChild(links);body.appendChild(form);
+    const foot=document.createElement("div");foot.className="aa-modal-foot";const close=()=>overlay.remove();
+    foot.append(btn("Cancel",close),btn("Save",()=>{
+      const raw=input.value.trim();
+      if(!raw)delete a.results[st.id];
+      else{
+        const points=num(raw);if(!Number.isFinite(points))return alert("Invalid score.");
+        a.results[st.id]={...(a.results[st.id]||{}),points,editedAt:now()};
+      }
+      a.updatedAt=now();c.updatedAt=now();save();close();render();
+    },"primary"));
+    modal.append(head,body,foot);overlay.appendChild(modal);document.body.appendChild(overlay);input.focus();overlay.onclick=ev=>{if(ev.target===overlay)close()};
+  }
+
   function editWeights(c,s){const as=Object.values(c.assessments),lines=as.map((a,i)=>(i+1)+". "+a.name+": "+weightFor(s,a)+"%"+(Object.prototype.hasOwnProperty.call(s.weightingOverrides||{},a.id)?" [override]":"")),choice=prompt(s.canonicalName+"\n\nSelect assessment number.\nType RESET to clear all overrides.\n\n"+lines.join("\n"));if(choice===null)return;if(choice.trim().toUpperCase()==="RESET"){s.weightingOverrides={};save();return render()}const i=Number(choice)-1;if(!Number.isInteger(i)||i<0||i>=as.length)return alert("Invalid assessment.");const a=as[i],old=Object.prototype.hasOwnProperty.call(s.weightingOverrides||{},a.id)?s.weightingOverrides[a.id]:"",v=prompt("Individual weight for "+a.name+".\n0 = exclude. Blank = course default.",old);if(v===null)return;s.weightingOverrides||={};if(!v.trim())delete s.weightingOverrides[a.id];else{const w=num(v);if(!(w>=0))return alert("Invalid weight.");s.weightingOverrides[a.id]=w}save();render()}
 
 
   function editCompositeStudentResults(c,st,a){
     const parts=ensureParts(a);
-    const lines=parts.map((p,i)=>{
-      const value=p.results?.[st.id]?.points;
-      return (i+1)+". "+p.name+": "+(value??"—")+" / "+p.maxPoints;
-    });
-    const choice=prompt(st.canonicalName+"\n"+a.name+"\n\nChoose part number to edit:\n\n"+lines.join("\n"));
-    if(choice===null)return;
-    const i=Number(choice)-1;
-    if(!Number.isInteger(i)||i<0||i>=parts.length)return alert("Invalid part.");
-    const p=parts[i],current=p.results?.[st.id]?.points??"";
-    const v=prompt(p.name+"\nPoints (blank removes this part result):",current);
-    if(v===null)return;
-    p.results||={};
-    if(!v.trim())delete p.results[st.id];
-    else{
-      const points=num(v);if(!Number.isFinite(points))return alert("Invalid score.");
-      p.results[st.id]={...(p.results[st.id]||{}),points,editedAt:now()};
+    const overlay=document.createElement("div");overlay.className="aa-modal-overlay";
+    const modal=document.createElement("div");modal.className="aa-modal";
+    const head=document.createElement("div");head.className="aa-modal-head";head.textContent=st.canonicalName+" · "+a.name;
+    const body=document.createElement("div");body.className="aa-modal-body";
+    const note=document.createElement("div");note.className="aa-muted aa-small";note.textContent="Edit the score for any exam part directly. Blank removes that part result.";
+    body.appendChild(note);
+
+    const table=document.createElement("table");table.className="aa-table aa-part-edit-table";
+    table.innerHTML="<thead><tr><th>Exam part</th><th>Points</th><th>Max</th><th>Links</th></tr></thead>";
+    const tbody=document.createElement("tbody"),rows=[];
+    for(const p of parts){
+      const result=p.results?.[st.id]||null,tr=document.createElement("tr");
+      const n=document.createElement("td"),scoreTd=document.createElement("td"),maxTd=document.createElement("td"),links=document.createElement("td");
+      n.textContent=p.name;maxTd.textContent=fmt(num(p.maxPoints),2);
+      const input=document.createElement("input");input.className="aa-input aa-result-input";input.value=result?.points??"";input.placeholder="blank = no result";scoreTd.appendChild(input);
+      const examLink=sourceLink(p.source,"Exam ↗");if(examLink)links.appendChild(examLink);
+      const answerHref=answerUrlForResult(p.source,result);
+      if(answerHref){
+        if(examLink)links.appendChild(document.createTextNode(" · "));
+        const answer=document.createElement("a");answer.className="aa-abitti-link";answer.href=answerHref;answer.target="_blank";answer.rel="noopener";answer.textContent="Student answer ↗";links.appendChild(answer);
+      }
+      tr.append(n,scoreTd,maxTd,links);tbody.appendChild(tr);rows.push({p,input});
     }
-    p.updatedAt=now();a.updatedAt=now();c.updatedAt=now();save();render();
+    table.appendChild(tbody);body.appendChild(table);
+
+    const foot=document.createElement("div");foot.className="aa-modal-foot";const close=()=>overlay.remove();
+    foot.append(btn("Cancel",close),btn("Save",()=>{
+      for(const {p,input} of rows){
+        const raw=input.value.trim();p.results||={};
+        if(!raw){delete p.results[st.id];continue}
+        const points=num(raw);if(!Number.isFinite(points)){alert("Invalid score for "+p.name+".");input.focus();return}
+        p.results[st.id]={...(p.results[st.id]||{}),points,editedAt:now()};
+        p.updatedAt=now();
+      }
+      a.updatedAt=now();c.updatedAt=now();save();close();render();
+    },"primary"));
+    modal.append(head,body,foot);overlay.appendChild(modal);document.body.appendChild(overlay);overlay.onclick=ev=>{if(ev.target===overlay)close()};
   }
 
   function manageCompositeStudents(c,a){
@@ -1492,7 +1590,9 @@
       const n=document.createElement("input");n.className="aa-input";n.value=p.name;n.onchange=()=>{if(n.value.trim())p.name=n.value.trim()};
       const m=document.createElement("input");m.className="aa-input aa-result-input";m.value=p.maxPoints;
       m.onchange=()=>{const v=num(m.value);if(v>0)p.maxPoints=v;else{alert("Invalid maximum.");m.value=p.maxPoints}syncCompositeMax(a);save();render()};
-      td1.appendChild(n);td2.appendChild(m);td3.textContent=Object.keys(p.results||{}).length;td4.textContent=p.source?.reviewPath||p.source?.type||"";
+      td1.appendChild(n);td2.appendChild(m);td3.textContent=Object.keys(p.results||{}).length;
+      const source=sourceLink(p.source,p.source?.reviewPath?"Open exam ↗":(p.source?.type||""));
+      if(source)td4.appendChild(source);else td4.textContent=p.source?.type||"";
       td5.appendChild(btn("Delete part",()=>{
         if(!confirm('Delete part "'+p.name+'" and all its results?'))return;
         a.parts=a.parts.filter(x=>x.id!==p.id);syncCompositeMax(a);a.updatedAt=now();c.updatedAt=now();save();overlay.remove();render();
