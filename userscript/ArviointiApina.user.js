@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ArviointiApina BETA
 // @namespace    https://github.com/ljrant/ArviointiApina
-// @version      0.14.0-beta.1
+// @version      0.15.0-beta.1
 // @description  BETA: OmaAbitti + Google Forms result collector and weighted course gradebook.
 // @match        *://*/*
 // @grant        GM_getValue
@@ -24,7 +24,7 @@
   "use strict";
 
   const KEY="arviointiapina_userscript_beta_v1";
-  const APP_VERSION="0.14.0-beta.1";
+  const APP_VERSION="0.15.0-beta.1";
   const APP_NAME="ArviointiApina BETA";
   const FINNISH={"10":90,"9½":85,"9":80,"8½":75,"8":70,"7½":65,"7":60,"6½":55,"6":50,"5½":45,"5":40,"4½":30,"4":0};
   const IB={"7":85,"6":70,"5":55,"4":40,"3":25,"2":10,"1":0};
@@ -33,6 +33,60 @@
     ib:{name:"IB 1–7",system:"ib",passGrade:"4",passThreshold:40,boundaries:{...IB}},
     pass50:{name:"Pass / Fail",system:"custom",passGrade:"Pass",passThreshold:50,boundaries:{"Pass":50,"Fail":0}}
   };
+  const COURSE_COLORS=[
+    "#2F6BFF","#E05A47","#2D9D78","#A55FDB","#D28A1D","#008FA8",
+    "#C43D73","#6E7D2C","#7A5CFA","#B45F06","#2680C2","#7B8D42"
+  ];
+
+  function nextCourseColor(){
+    const used=new Set(Object.values(db?.courses||{}).map(c=>String(c.color||"").toUpperCase()));
+    return COURSE_COLORS.find(c=>!used.has(c.toUpperCase()))||COURSE_COLORS[Object.keys(db?.courses||{}).length%COURSE_COLORS.length];
+  }
+
+  function courseColor(c){
+    return c?.color||"#2F6BFF";
+  }
+
+  function hexToRgb(hex){
+    const m=String(hex||"").match(/^#([0-9a-f]{6})$/i);
+    if(!m)return null;
+    const n=parseInt(m[1],16);
+    return{r:(n>>16)&255,g:(n>>8)&255,b:n&255};
+  }
+
+  function contrastText(hex){
+    const rgb=hexToRgb(hex);if(!rgb)return"#fff";
+    const y=(rgb.r*299+rgb.g*587+rgb.b*114)/1000;
+    return y>=150?"#111":"#fff";
+  }
+
+  function tint(hex,amount=.88){
+    const rgb=hexToRgb(hex);if(!rgb)return"#eef3ff";
+    const mix=v=>Math.round(v+(255-v)*amount);
+    return"rgb("+mix(rgb.r)+","+mix(rgb.g)+","+mix(rgb.b)+")";
+  }
+
+  function ensureCourseColors(){
+    let changed=false,index=0;
+    for(const c of Object.values(db.courses||{})){
+      if(!/^#[0-9a-f]{6}$/i.test(String(c.color||""))){
+        c.color=COURSE_COLORS[index%COURSE_COLORS.length];changed=true;
+      }
+      index++;
+    }
+    if(changed)save();
+  }
+
+  function courseOptionText(c){return"● "+c.name}
+
+  function styleCourseSelect(select,c){
+    if(!select)return;
+    const color=courseColor(c);
+    select.style.borderColor=color;
+    select.style.boxShadow="inset 4px 0 0 "+color;
+    select.style.backgroundColor=tint(color,.94);
+  }
+
   const IS_ABITTI=location.hostname==="oma.abitti.fi"&&location.pathname.startsWith("/school/review/");
   const IS_GRADING_LIST=location.hostname==="oma.abitti.fi"&&/^\/school\/grading\/?$/.test(location.pathname);
   const IS_GOOGLE_FORMS=location.hostname==="docs.google.com"&&location.pathname.includes("/forms/");
@@ -158,6 +212,7 @@
     db.courses[id]={
       id,
       name:String(name||"New course").trim(),
+      color:/^#[0-9a-f]{6}$/i.test(String(options.color||""))?options.color:nextCourseColor(),
       students:{},
       detachedStudents:{},
       assessments:{},
@@ -196,6 +251,13 @@
       const nameLabel=document.createElement("label");nameLabel.textContent="Course name";
       const name=document.createElement("input");name.className="aa-input";name.value=defaultName;name.placeholder="e.g. BIO HL";
       nameLabel.appendChild(name);
+
+      const colorLabel=document.createElement("label");colorLabel.textContent="Course colour";
+      const colorRow=document.createElement("div");colorRow.className="aa-course-color-row";
+      const color=document.createElement("input");color.type="color";color.value=nextCourseColor();color.className="aa-course-color-input";
+      const colorCode=document.createElement("code");colorCode.textContent=color.value.toUpperCase();
+      color.oninput=()=>{colorCode.textContent=color.value.toUpperCase()};
+      colorRow.append(color,colorCode);colorLabel.appendChild(colorRow);
 
       const presetLabel=document.createElement("label");presetLabel.textContent="Grading / grade boundaries";
       const preset=document.createElement("select");preset.className="aa-select";
@@ -258,7 +320,7 @@
       passSlider.onchange=()=>applyPass(num(passSlider.value));
       passNumber.onchange=()=>{const v=Math.max(0,Math.min(100,num(passNumber.value)));passSlider.value=String(v);applyPass(v)};
       preset.onchange=refresh;refresh();
-      form.append(nameLabel,presetLabel,missingLabel,passLabel,boundaryLabel,importRow);body.appendChild(form);
+      form.append(nameLabel,colorLabel,presetLabel,missingLabel,passLabel,boundaryLabel,importRow);body.appendChild(form);
 
       const foot=document.createElement("div");foot.className="aa-modal-foot";
       const close=v=>{overlay.remove();resolve(v)};
@@ -269,9 +331,9 @@
           const selectedPreset=preset.value;
           let c;
           if(selectedPreset!=="custom"&&JSON.stringify(boundaries)===JSON.stringify(GRADE_PRESETS[selectedPreset].boundaries)){
-            c=createCourse(name.value.trim(),{presetKey:selectedPreset,missingPolicy:missing.value});
+            c=createCourse(name.value.trim(),{presetKey:selectedPreset,missingPolicy:missing.value,color:color.value});
           }else{
-            c=createCourse(name.value.trim(),{presetKey:"finnish",missingPolicy:missing.value,boundaries,customName:selectedPreset==="custom"?"Custom":GRADE_PRESETS[selectedPreset]?.name+" (edited)",passGrade:passGradeHint});
+            c=createCourse(name.value.trim(),{presetKey:"finnish",missingPolicy:missing.value,boundaries,customName:selectedPreset==="custom"?"Custom":GRADE_PRESETS[selectedPreset]?.name+" (edited)",passGrade:passGradeHint,color:color.value});
           }
           close(c);
         }catch(e){alert("Invalid grade boundaries: "+e.message)}
@@ -1029,7 +1091,7 @@
   .aa-score{cursor:pointer;text-decoration:underline dotted}.aa-card{border:1px solid #dde4e0;background:#fafcfb;border-radius:9px;padding:9px;margin-bottom:8px}.aa-card h3{margin:0 0 7px;font-size:14px}.aa-area{width:100%;min-height:170px;font-family:ui-monospace,Consolas,monospace}
   .aa-mini{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:6px;align-items:center;padding:6px 2px;border-bottom:1px solid #edf1ef}.aa-mini-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.aa-empty{text-align:center;color:#6a7871;padding:25px}\n  .aa-modal-overlay{position:fixed;inset:0;z-index:2147483647;background:#0007;display:flex;align-items:center;justify-content:center;padding:18px}\n  .aa-modal{width:min(920px,96vw);max-height:90vh;display:flex;flex-direction:column;background:#fff;color:#172026;border:1px solid #87958f;border-radius:10px;box-shadow:0 18px 60px #0006;overflow:hidden}\n  .aa-modal-head{padding:10px 12px;font-weight:800;border-bottom:1px solid #dde4e0;background:#f5f8f6}.aa-modal-body{padding:10px 12px;overflow:auto}.aa-modal-foot{padding:9px 12px;display:flex;justify-content:flex-end;gap:6px;border-top:1px solid #dde4e0;background:#fafcfb}\n  .aa-import-table td,.aa-import-table th{white-space:normal}.aa-row-disabled{opacity:.48}.aa-result-input{width:85px}
   .aa-destination-options{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px;margin-top:10px}.aa-destination-card{display:flex;flex-direction:column;gap:4px;text-align:left;border:1px solid #bbc8c2;border-radius:9px;background:#fff;color:#172026;padding:12px;cursor:pointer}.aa-destination-card:hover{background:#f5f8f6;border-color:#7f938a}.aa-destination-card strong{font-size:13px}.aa-destination-card span{font-size:11px;color:#6a7871}
-  #aa-grading-manager{margin:10px 0 14px;border:1px solid #aebbb5;border-radius:8px;background:#fff;color:#172026;font:12px system-ui,-apple-system,Segoe UI,sans-serif;overflow:hidden}.aa-manager-bar{display:flex;align-items:center;gap:7px;flex-wrap:wrap;padding:8px;background:#f5f8f6;border-bottom:1px solid #d7dfdb}.aa-manager-table{width:100%;border-collapse:collapse}.aa-manager-table th,.aa-manager-table td{padding:7px 8px;border-bottom:1px solid #e1e6e3;text-align:left;vertical-align:middle}.aa-manager-table th{background:#fafcfb}.aa-manager-exam{min-width:260px;font-weight:600}.aa-manager-select{min-width:185px}.aa-manager-select .aa-batch-check{margin-right:8px}.aa-add-group-select{min-width:145px}.aa-manager-select .aa-batch-check{margin-right:7px}.aa-manager-courses{min-width:280px}.aa-course-chip{display:inline-block;margin:2px 5px 2px 0;padding:4px 7px;border:1px solid #9dafaa;border-radius:999px;background:#f7faf8;color:#24362f;cursor:pointer;font-size:11px}.aa-course-chip:hover{background:#edf4f0}.aa-placement-table{margin-top:10px}.aa-placement-card{margin-top:10px}.aa-placement-title{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:8px}.aa-placement-title label{display:flex;align-items:center;gap:6px}.aa-sortable-head{cursor:pointer;user-select:none}.aa-sortable-head:hover{background:#eef4f1!important}.aa-sortable-head.active{font-weight:800}.aa-sort-arrow{font-size:10px;white-space:nowrap}.aa-gradebook-search{min-width:190px}.aa-gradebook-head-row{display:flex;align-items:center;justify-content:space-between;gap:5px}.aa-sort-icon{border:0;background:transparent;color:#52635b;cursor:pointer;font-size:10px;padding:1px 2px;line-height:1}.aa-sort-icon:hover{color:#111}.aa-table th.active-sort{background:#eef4f1}.aa-header-weight{width:52px;margin:2px 3px 0;padding:2px 3px;border:1px solid #b7c4be;border-radius:4px;font-size:10px}.aa-student-weight-wrap{display:flex;align-items:center;gap:3px;margin-top:3px}.aa-student-weight{width:48px;padding:2px 3px;border:1px solid #c6d0cb;border-radius:4px;font-size:10px}.aa-exam-name-filter{min-width:180px}.aa-direct-suggestions{margin-top:10px;display:flex;flex-direction:column;gap:6px}.aa-direct-suggestion{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px;border:1px solid #dde4e0;border-radius:7px;background:#fafcfb}.aa-student-picker-scroll{max-height:55vh;overflow:auto}.aa-modal-wide{width:min(1100px,94vw)!important}.aa-assessment-chip{display:inline-flex;align-items:center;gap:4px;margin:2px 5px 2px 0;padding:3px 5px;border:1px solid #ccd7d2;border-radius:999px;background:#f7faf8}.aa-assessment-chip button{border:0;background:transparent;color:#a33;cursor:pointer;font-weight:700;padding:0 2px}.aa-removed-student{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #e5ebe8}.aa-removed-student>span{flex:1}.aa-course-form{display:grid;gap:10px}.aa-pass-row{display:flex;align-items:center;gap:8px}.aa-pass-row input[type=range]{flex:1}.aa-pass-number{width:72px}.aa-pass-settings{display:grid;gap:5px;max-width:420px}.aa-add-exam-scroll{max-height:55vh;overflow:auto}.aa-add-exam-table th{position:sticky;top:0;background:#fff;z-index:1}.aa-manager-body[hidden]{display:none!important}.aa-abitti-link{color:#1765c1;text-decoration:none}.aa-abitti-link:hover{text-decoration:underline}.aa-source-links,.aa-answer-links{margin-top:3px;line-height:1.25}.aa-modal-small{width:min(520px,94vw)!important}.aa-score-edit-form{display:grid;gap:10px}.aa-score-edit-form label{display:grid;gap:5px;font-weight:600}.aa-score-edit-links{font-size:12px}.aa-part-edit-table td:last-child{white-space:nowrap}.aa-course-form label{display:grid;gap:5px;font-weight:600}.aa-boundary-area{min-height:180px;font-family:ui-monospace,SFMono-Regular,Consolas,monospace!important}
+  #aa-grading-manager{margin:10px 0 14px;border:1px solid #aebbb5;border-radius:8px;background:#fff;color:#172026;font:12px system-ui,-apple-system,Segoe UI,sans-serif;overflow:hidden}.aa-manager-bar{display:flex;align-items:center;gap:7px;flex-wrap:wrap;padding:8px;background:#f5f8f6;border-bottom:1px solid #d7dfdb}.aa-manager-table{width:100%;border-collapse:collapse}.aa-manager-table th,.aa-manager-table td{padding:7px 8px;border-bottom:1px solid #e1e6e3;text-align:left;vertical-align:middle}.aa-manager-table th{background:#fafcfb}.aa-manager-exam{min-width:260px;font-weight:600}.aa-manager-select{min-width:185px}.aa-manager-select .aa-batch-check{margin-right:8px}.aa-add-group-select{min-width:145px}.aa-manager-select .aa-batch-check{margin-right:7px}.aa-manager-courses{min-width:280px}.aa-course-chip{display:inline-block;margin:2px 5px 2px 0;padding:4px 7px;border:1px solid #9dafaa;border-radius:999px;background:#f7faf8;color:#24362f;cursor:pointer;font-size:11px}.aa-course-chip:hover{background:#edf4f0}.aa-placement-table{margin-top:10px}.aa-placement-card{margin-top:10px}.aa-placement-title{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:8px}.aa-placement-title label{display:flex;align-items:center;gap:6px}.aa-sortable-head{cursor:pointer;user-select:none}.aa-sortable-head:hover{background:#eef4f1!important}.aa-sortable-head.active{font-weight:800}.aa-sort-arrow{font-size:10px;white-space:nowrap}.aa-gradebook-search{min-width:190px}.aa-gradebook-head-row{display:flex;align-items:center;justify-content:space-between;gap:5px}.aa-sort-icon{border:0;background:transparent;color:#52635b;cursor:pointer;font-size:10px;padding:1px 2px;line-height:1}.aa-sort-icon:hover{color:#111}.aa-table th.active-sort{background:#eef4f1}.aa-header-weight{width:52px;margin:2px 3px 0;padding:2px 3px;border:1px solid #b7c4be;border-radius:4px;font-size:10px}.aa-student-weight-wrap{display:flex;align-items:center;gap:3px;margin-top:3px}.aa-student-weight{width:48px;padding:2px 3px;border:1px solid #c6d0cb;border-radius:4px;font-size:10px}.aa-exam-name-filter{min-width:180px}.aa-direct-suggestions{margin-top:10px;display:flex;flex-direction:column;gap:6px}.aa-direct-suggestion{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px;border:1px solid #dde4e0;border-radius:7px;background:#fafcfb}.aa-student-picker-scroll{max-height:55vh;overflow:auto}.aa-modal-wide{width:min(1100px,94vw)!important}.aa-assessment-chip{display:inline-flex;align-items:center;gap:4px;margin:2px 5px 2px 0;padding:3px 5px;border:1px solid #ccd7d2;border-radius:999px;background:#f7faf8}.aa-assessment-chip button{border:0;background:transparent;color:#a33;cursor:pointer;font-weight:700;padding:0 2px}.aa-removed-student{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #e5ebe8}.aa-removed-student>span{flex:1}.aa-course-form{display:grid;gap:10px}.aa-pass-row{display:flex;align-items:center;gap:8px}.aa-pass-row input[type=range]{flex:1}.aa-pass-number{width:72px}.aa-pass-settings{display:grid;gap:5px;max-width:420px}.aa-add-exam-scroll{max-height:55vh;overflow:auto}.aa-add-exam-table th{position:sticky;top:0;background:#fff;z-index:1}.aa-manager-body[hidden]{display:none!important}.aa-abitti-link{color:#1765c1;text-decoration:none}.aa-abitti-link:hover{text-decoration:underline}.aa-source-links,.aa-answer-links{margin-top:3px;line-height:1.25}.aa-modal-small{width:min(520px,94vw)!important}.aa-score-edit-form{display:grid;gap:10px}.aa-score-edit-form label{display:grid;gap:5px;font-weight:600}.aa-score-edit-links{font-size:12px}.aa-part-edit-table td:last-child{white-space:nowrap}.aa-course-swatch{width:11px;height:11px;border-radius:3px;display:inline-block;flex:0 0 auto}.aa-brand{display:flex;align-items:center;gap:6px}.aa-head{align-items:center}.aa-head-group,.aa-head-actions{display:flex;align-items:center;gap:5px}.aa-head-actions{margin-left:auto}.aa-head-label{font-size:10px;color:#69776f;font-weight:700;text-transform:uppercase;letter-spacing:.04em}.aa-course-select{min-width:145px}.aa-course-badge{display:inline-flex;align-items:center;padding:4px 8px;border-radius:999px;font-size:11px;font-weight:700}.aa-course-color-row{display:flex;align-items:center;gap:8px}.aa-course-color-input{width:46px;height:30px;padding:1px;border:1px solid #bbc8c2;border-radius:6px;background:#fff}.aa-color-setting{display:flex;align-items:center;gap:8px}.aa-manager-control{display:inline-flex;align-items:center;gap:5px}.aa-manager-filter{flex:1;min-width:180px}.aa-manager-filter .aa-exam-name-filter{width:100%}.aa-course-chip{font-weight:650}.aa-course-form label{display:grid;gap:5px;font-weight:600}.aa-boundary-area{min-height:180px;font-family:ui-monospace,SFMono-Regular,Consolas,monospace!important}
 
   #aa-grading-batchbar{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin:10px 0;padding:9px;border:1px solid #9eaaa4;border-radius:8px;background:#f5f8f6;color:#172026;font:12px system-ui,-apple-system,Segoe UI,sans-serif}#aa-grading-batchbar .aa-batch-hint{flex:1 1 320px;color:#53615a}.aa-batch-col{width:120px;min-width:120px;text-align:center!important}.aa-batch-cell{vertical-align:middle}.aa-batch-check{margin-right:6px}.aa-batch-group{width:48px;padding:3px 5px;border:1px solid #aebbb5;border-radius:5px;text-transform:uppercase}.aa-batch-head .aa-batch-sub{font-size:10px;font-weight:400;color:#66746d}\n  `);
 
@@ -1096,40 +1158,44 @@
   }
 
   function header(p){
-    const h=document.createElement("div");h.className="aa-head";const title=document.createElement("div");title.className="aa-title";title.textContent=APP_NAME;h.appendChild(title);
-
-    const s=document.createElement("select");s.className="aa-select";
-    for(const c of Object.values(db.courses).sort((a,b)=>a.name.localeCompare(b.name,"fi"))){
-      const o=document.createElement("option");o.value=c.id;o.textContent=c.name;o.selected=c.id===db.settings.activeCourseId;s.appendChild(o)
-    }
-    s.onchange=()=>{db.settings.activeCourseId=s.value;save();render()};
-    h.appendChild(s);
-
+    const h=document.createElement("div");h.className="aa-head";
     const active=course();
+
+    const brand=document.createElement("div");brand.className="aa-title aa-brand";
+    const swatch=document.createElement("span");swatch.className="aa-course-swatch";swatch.style.background=courseColor(active);
+    const title=document.createElement("span");title.textContent=APP_NAME;
+    brand.append(swatch,title);h.appendChild(brand);
+
+    const courseGroup=document.createElement("div");courseGroup.className="aa-head-group aa-course-group";
+    const courseLabel=document.createElement("span");courseLabel.className="aa-head-label";courseLabel.textContent="Course";
+    const select=document.createElement("select");select.className="aa-select aa-course-select";
+    for(const c of Object.values(db.courses).sort((a,b)=>a.name.localeCompare(b.name,"fi"))){
+      const o=document.createElement("option");o.value=c.id;o.textContent=courseOptionText(c);o.selected=c.id===db.settings.activeCourseId;
+      o.style.color=courseColor(c);o.style.backgroundColor=tint(courseColor(c),.94);select.appendChild(o);
+    }
+    styleCourseSelect(select,active);
+    select.onchange=()=>{db.settings.activeCourseId=select.value;save();render()};
+    courseGroup.append(courseLabel,select,btn("+ Course",async()=>{const c=await createCourseDialog();if(c)render()}));
+    h.appendChild(courseGroup);
+
     if(active){
-      const nameInput=document.createElement("input");
-      nameInput.className="aa-input";
-      nameInput.value=active.name;
-      nameInput.placeholder="Course name";
-      nameInput.style.width="180px";
+      const renameGroup=document.createElement("div");renameGroup.className="aa-head-group aa-rename-group";
+      const renameLabel=document.createElement("span");renameLabel.className="aa-head-label";renameLabel.textContent="Name";
+      const nameInput=document.createElement("input");nameInput.className="aa-input";nameInput.value=active.name;nameInput.placeholder="Course name";nameInput.style.width="160px";
       const commitName=()=>{
         const next=nameInput.value.trim();
         if(!next){nameInput.value=active.name;return}
-        if(next!==active.name){
-          active.name=next;
-          active.updatedAt=now();
-          save();
-          render();
-        }
+        if(next!==active.name){active.name=next;active.updatedAt=now();save();render()}
       };
-      nameInput.onchange=commitName;
-      nameInput.onkeydown=e=>{if(e.key==="Enter"){e.preventDefault();commitName();nameInput.blur()}};
-      h.appendChild(nameInput);
+      nameInput.onchange=commitName;nameInput.onkeydown=e=>{if(e.key==="Enter"){e.preventDefault();commitName();nameInput.blur()}};
+      renameGroup.append(renameLabel,nameInput);h.appendChild(renameGroup);
     }
 
-    h.appendChild(btn("+ Course",async()=>{const c=await createCourseDialog();if(c)render()}));
-    if(IS_ABITTI)h.appendChild(btn("Import OmaAbitti",importDialog,"primary"));
-    h.appendChild(btn(compact?"Full":"Compact",()=>{setPanelState(true,!compact);render()}));h.appendChild(btn("×",()=>{setPanelState(false,compact);render()}));p.appendChild(h);
+    const actions=document.createElement("div");actions.className="aa-head-actions";
+    if(IS_ABITTI)actions.appendChild(btn("Import OmaAbitti",importDialog,"primary"));
+    actions.append(btn(compact?"Full view":"Compact",()=>{setPanelState(true,!compact);render()}),btn("×",()=>{setPanelState(false,compact);render()}));
+    h.appendChild(actions);p.appendChild(h);
+    p.style.borderTop="4px solid "+courseColor(active);
   }
 
   function tabs(p){
@@ -1328,10 +1394,11 @@
 
   function gradebook(parent,c){
     const bar=document.createElement("div");bar.className="aa-toolbar";
+    const badge=document.createElement("span");badge.className="aa-course-badge";badge.textContent="● "+c.name;badge.style.background=courseColor(c);badge.style.color=contrastText(courseColor(c));
     const info=document.createElement("span");info.className="aa-muted aa-small";
     info.textContent=Object.keys(c.students).length+" students · "+Object.keys(c.assessments).length+" assessments";
     const search=document.createElement("input");search.className="aa-input aa-gradebook-search";search.placeholder="Search student…";
-    bar.append(info,search,btn("+ Add exam",()=>openAddExamDialog(c),"primary"));
+    bar.append(badge,info,search,btn("+ Add exam",()=>openAddExamDialog(c),"primary"));
     if(IS_ABITTI)bar.appendChild(btn("Import current exam",importDialog));
     bar.appendChild(btn("Export CSV",()=>exportCSV(c)));parent.appendChild(bar);
 
@@ -1779,6 +1846,14 @@
     c.grading.ibBoundaries||={...IB};
     c.grading.customBoundaries||={};
 
+    const courseCard=document.createElement("div");courseCard.className="aa-card";courseCard.innerHTML="<h3>Course appearance</h3>";
+    const colorLabel=document.createElement("label");colorLabel.className="aa-color-setting";colorLabel.textContent="Course colour ";
+    const color=document.createElement("input");color.type="color";color.value=courseColor(c);
+    const code=document.createElement("code");code.textContent=color.value.toUpperCase();
+    color.oninput=()=>{code.textContent=color.value.toUpperCase()};
+    color.onchange=()=>{c.color=color.value;c.updatedAt=now();save();render()};
+    colorLabel.append(color,code);courseCard.appendChild(colorLabel);parent.appendChild(courseCard);
+
     const calcCard=document.createElement("div");calcCard.className="aa-card";calcCard.innerHTML="<h3>Grade calculation</h3>";
     const preset=document.createElement("select");preset.className="aa-select";
     for(const [key,p] of Object.entries(GRADE_PRESETS)){const o=document.createElement("option");o.value=key;o.textContent=p.name;preset.appendChild(o)}
@@ -1985,8 +2060,9 @@
       if(seen.has(key))continue;seen.add(key);
       const c=placement.course,a=placement.assessment;
       const card=document.createElement("div");card.className="aa-card aa-placement-card";
+      card.style.borderLeft="6px solid "+courseColor(c);card.style.background=tint(courseColor(c),.965);
       const h=document.createElement("div");h.className="aa-placement-title";
-      const name=document.createElement("strong");name.textContent=c.name+" · "+a.name;
+      const name=document.createElement("strong");name.textContent="● "+c.name+" · "+a.name;name.style.color=courseColor(c);
       const weightLabel=document.createElement("label");weightLabel.textContent="Assessment weight % ";
       const weight=document.createElement("input");weight.className="aa-input aa-result-input";weight.value=a.defaultWeight??0;
       weightLabel.appendChild(weight);h.append(name,weightLabel);card.appendChild(h);
@@ -2298,8 +2374,10 @@
     });
     const courseSelect=document.createElement("select");courseSelect.className="aa-select";
     for(const crs of Object.values(db.courses).sort((a,b)=>a.name.localeCompare(b.name,"fi"))){
-      const o=document.createElement("option");o.value=crs.id;o.textContent=crs.name;o.selected=crs.id===db.settings.activeCourseId;courseSelect.appendChild(o);
+      const o=document.createElement("option");o.value=crs.id;o.textContent=courseOptionText(crs);o.selected=crs.id===db.settings.activeCourseId;
+      o.style.color=courseColor(crs);o.style.backgroundColor=tint(courseColor(crs),.94);courseSelect.appendChild(o);
     }
+    styleCourseSelect(courseSelect,course());
     courseSelect.onchange=()=>{db.settings.activeCourseId=courseSelect.value;save();render();setupGradingListPicker(true)};
 
     const addCourseBtn=btn("+ Course",async()=>{
@@ -2345,7 +2423,10 @@
       finally{importBtn.disabled=false;importBtn.textContent="Add selected to gradebook"}
     },"primary");
 
-    bar.append(brand,toggleManager,document.createTextNode("Course:"),courseSelect,addCourseBtn,document.createTextNode("School year:"),schoolYearSelect,examNameFilter,importBtn);
+    const courseGroup=document.createElement("span");courseGroup.className="aa-manager-control";courseGroup.append(document.createTextNode("Course:"),courseSelect,addCourseBtn);
+    const yearGroup=document.createElement("span");yearGroup.className="aa-manager-control";yearGroup.append(document.createTextNode("School year:"),schoolYearSelect);
+    const filterGroup=document.createElement("span");filterGroup.className="aa-manager-control aa-manager-filter";filterGroup.append(examNameFilter);
+    bar.append(brand,courseGroup,yearGroup,filterGroup,importBtn,toggleManager);
     manager.appendChild(bar);
     managerBody.hidden=!!db.settings.gradingManagerCollapsed;
     manager.appendChild(managerBody);
@@ -2448,7 +2529,10 @@
           for(const arr of grouped.values()){
             const x=arr[0],chip=document.createElement("button");chip.type="button";chip.className="aa-course-chip";
             const effect=x.part?" · effect "+fmt(partEffect(x.part),2):"";
-            chip.textContent=x.course.name+" · "+fmt(num(x.assessment.defaultWeight)||0,1)+"% · "+x.assessment.name+effect;
+            chip.textContent="● "+x.course.name+" · "+fmt(num(x.assessment.defaultWeight)||0,1)+"% · "+x.assessment.name+effect;
+            chip.style.backgroundColor=courseColor(x.course);
+            chip.style.borderColor=courseColor(x.course);
+            chip.style.color=contrastText(courseColor(x.course));
             chip.title="Open assessment: edit weight, related exam parts, scores, or remove from course";
             chip.onclick=()=>editExamPlacements(item.reviewPath,item.title);
             courses.appendChild(chip);
@@ -2565,6 +2649,7 @@
   GM_registerMenuCommand("Export ArviointiApina backup",backup);
 
   cleanupPhantomCompositeParts();
+  ensureCourseColors();
 
   if(typeof GM_addValueChangeListener==="function"){
     GM_addValueChangeListener(KEY,(_name,_oldValue,newValue,remote)=>{
@@ -2574,6 +2659,7 @@
         if(parsed&&typeof parsed==="object"){
           db={...fresh(),...parsed,settings:{...fresh().settings,...(parsed.settings||{})},courses:parsed.courses||{}};
           cleanupPhantomCompositeParts();
+          ensureCourseColors();
           render();
           if(IS_GRADING_LIST)setTimeout(()=>setupGradingListPicker(true).catch(()=>{}),0);
         }
