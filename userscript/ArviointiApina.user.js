@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         ArviointiApina BETA 0.9.0-beta.3
+// @name         ArviointiApina BETA 0.10.0-beta.1
 // @namespace    https://github.com/ljrant/ArviointiApina
-// @version      0.9.0-beta.3
+// @version      0.10.0-beta.1
 // @description  BETA: OmaAbitti + Google Forms result collector and weighted course gradebook.
 // @match        *://*/*
 // @grant        GM_getValue
@@ -24,7 +24,7 @@
   "use strict";
 
   const KEY="arviointiapina_userscript_beta_v1";
-  const APP_VERSION="0.9.0-beta.3";
+  const APP_VERSION="0.10.0-beta.1";
   const APP_NAME="ArviointiApina BETA "+APP_VERSION;
   const FINNISH={"10":90,"9½":85,"9":80,"8½":75,"8":70,"7½":65,"7":60,"6½":55,"6":50,"5½":45,"5":40,"4½":30,"4":0};
   const IB={"7":85,"6":70,"5":55,"4":40,"3":25,"2":10,"1":0};
@@ -74,7 +74,7 @@
 
   function createCourse(name){
     const id=uid("course");
-    db.courses[id]={id,name:String(name||"New course").trim(),students:{},assessments:{},grading:{system:"finnish",missingPolicy:"redistribute",finnishBoundaries:{...FINNISH},ibBoundaries:{...IB}},createdAt:now(),updatedAt:now()};
+    db.courses[id]={id,name:String(name||"New course").trim(),students:{},detachedStudents:{},assessments:{},grading:{system:"finnish",missingPolicy:"redistribute",finnishBoundaries:{...FINNISH},ibBoundaries:{...IB}},createdAt:now(),updatedAt:now()};
     db.settings.activeCourseId=id;save();return db.courses[id];
   }
 
@@ -83,6 +83,15 @@
     c.students[id]={id,canonicalName:n||e||"Unnamed student",aliases:[],emails:e?[e]:[],abittiUuids:incoming.uuid?[incoming.uuid]:[],weightingOverrides:{},createdAt:now(),updatedAt:now()};
     return c.students[id];
   }
+
+  function ensureStudentPools(c){c.students||={};c.detachedStudents||={}}
+  function allKnownStudents(c){ensureStudentPools(c);return{...c.detachedStudents,...c.students}}
+  function isStudentOnCourse(c,id){return !!c.students?.[id]}
+  function activateStudent(c,st){ensureStudentPools(c);if(!st)return null;delete c.detachedStudents[st.id];c.students[st.id]=st;st.updatedAt=now();c.updatedAt=now();return st}
+  function detachStudent(c,id){ensureStudentPools(c);const st=c.students[id];if(!st)return;delete c.students[id];c.detachedStudents[id]=st;st.updatedAt=now();c.updatedAt=now()}
+  function deleteStudentPermanently(c,id){ensureStudentPools(c);delete c.students[id];delete c.detachedStudents[id];for(const a of Object.values(c.assessments||{})){delete a.results?.[id];for(const p of a.parts||[])delete p.results?.[id]}c.updatedAt=now()}
+  function studentHasAssessmentResult(a,id){return hasParts(a)?a.parts.some(p=>Object.prototype.hasOwnProperty.call(p.results||{},id)):Object.prototype.hasOwnProperty.call(a.results||{},id)}
+  function removeStudentFromAssessment(a,id){delete a.results?.[id];for(const p of a.parts||[])delete p.results?.[id];a.updatedAt=now()}
 
   function levenshtein(a,b){
     if(a===b)return 0;if(!a.length)return b.length;if(!b.length)return a.length;
@@ -105,7 +114,7 @@
   const names=s=>[s.canonicalName,...(s.aliases||[])].filter(Boolean);
 
   function matchStudent(c,incoming){
-    const students=Object.values(c.students||{}),n=norm(incoming.name),e=email(incoming.email),u=String(incoming.uuid||"").trim();
+    const students=Object.values(allKnownStudents(c)),n=norm(incoming.name),e=email(incoming.email),u=String(incoming.uuid||"").trim();
 
     // 1. Name first: exact then fuzzy/partial.
     if(n){
@@ -446,59 +455,61 @@
 
   function chooseImportStudents(c,detected){
     return new Promise(resolve=>{
+      ensureStudentPools(c);
       const overlay=document.createElement("div");overlay.className="aa-modal-overlay";
-      const modal=document.createElement("div");modal.className="aa-modal";
-      const head=document.createElement("div");head.className="aa-modal-head";head.textContent="Choose OmaAbitti students to import";
+      const modal=document.createElement("div");modal.className="aa-modal aa-modal-wide";
+      const head=document.createElement("div");head.className="aa-modal-head";head.textContent="Choose students for "+detected.name;
       const body=document.createElement("div");body.className="aa-modal-body";
-      const note=document.createElement("div");note.className="aa-muted aa-small";note.textContent="Only checked students will be imported or updated. Unselected existing exam results stay unchanged.";
-      body.appendChild(note);
+      const note=document.createElement("div");note.className="aa-muted aa-small";note.textContent=detected.students.length+" students detected. Checked students will be added to this course (or restored if previously removed) and their assessment result imported.";
+      const count=document.createElement("div");count.className="aa-muted aa-small";count.style.marginTop="4px";
+      body.append(note,count);
 
       const controls=document.createElement("div");controls.className="aa-toolbar";
-      const existingLabel=document.createElement("label");
-      const existingOnly=document.createElement("input");existingOnly.type="checkbox";
+      const existingLabel=document.createElement("label"),existingOnly=document.createElement("input");existingOnly.type="checkbox";
       existingLabel.append(existingOnly,document.createTextNode(" Only students already on this course"));
       const rows=[];
-      controls.append(existingLabel,btn("Select all",()=>rows.forEach(r=>{if(!r.cb.disabled)r.cb.checked=true})),btn("Select none",()=>rows.forEach(r=>r.cb.checked=false)));
+      controls.append(existingLabel,
+        btn("Select all",()=>{rows.forEach(r=>{if(!r.cb.disabled)r.cb.checked=true});refresh()}),
+        btn("Select none",()=>{rows.forEach(r=>r.cb.checked=false);refresh()})
+      );
       body.appendChild(controls);
 
-      const wrap=document.createElement("div");wrap.className="aa-table-wrap";
+      const wrap=document.createElement("div");wrap.className="aa-table-wrap aa-student-picker-scroll";
       const table=document.createElement("table");table.className="aa-table aa-import-table";
-      table.innerHTML="<thead><tr><th></th><th>OmaAbitti student</th><th>Email</th><th>Points</th><th>Course match</th></tr></thead>";
+      table.innerHTML="<thead><tr><th></th><th>OmaAbitti student</th><th>Email</th><th>Points</th><th>Course status / match</th></tr></thead>";
       const tbody=document.createElement("tbody");
 
       detected.students.forEach((incoming,index)=>{
-        const m=matchStudent(c,incoming);
-        const tr=document.createElement("tr");
-        const a=document.createElement("td"),b=document.createElement("td"),d=document.createElement("td"),e=document.createElement("td"),g=document.createElement("td");
-        const cb=document.createElement("input");cb.type="checkbox";
-        const hasScore=Number.isFinite(num(incoming.points));cb.checked=hasScore;cb.disabled=!hasScore;a.appendChild(cb);
-        b.textContent=incoming.name||"(no name)";
-        d.textContent=incoming.email||"";
-        e.textContent=hasScore?fmt(num(incoming.points),2):"—";
-        g.textContent=matchLabel(m)+(hasScore?"":" · no score");
-        if(!hasScore)tr.classList.add("aa-row-disabled");
-        tr.append(a,b,d,e,g);tbody.appendChild(tr);
-        rows.push({index,m,cb,tr,status:g,base:matchLabel(m),hasScore});
+        const m=matchStudent(c,incoming),hasScore=Number.isFinite(num(incoming.points));
+        const tr=document.createElement("tr"),a=document.createElement("td"),b=document.createElement("td"),d=document.createElement("td"),e=document.createElement("td"),g=document.createElement("td");
+        const cb=document.createElement("input");cb.type="checkbox";cb.checked=hasScore;cb.disabled=!hasScore;cb.onchange=()=>refresh();a.appendChild(cb);
+        b.textContent=incoming.name||"(no name)";d.textContent=incoming.email||"";e.textContent=hasScore?fmt(num(incoming.points),2):"—";
+        const base=m?(isStudentOnCourse(c,m.student.id)?"On course: ":"Removed from course: ")+m.student.canonicalName:matchLabel(m);
+        g.textContent=base+(hasScore?"":" · no score");
+        tr.append(a,b,d,e,g);tbody.appendChild(tr);rows.push({index,m,cb,tr,status:g,base,hasScore});
       });
 
-      const refresh=()=>rows.forEach(r=>{
-        const disabled=!r.hasScore||(existingOnly.checked&&!r.m);
-        r.cb.disabled=disabled;if(disabled)r.cb.checked=false;
-        r.tr.classList.toggle("aa-row-disabled",disabled);
-        r.status.textContent=r.base+(existingOnly.checked&&!r.m?" · skipped in existing-only mode":(!r.hasScore?" · no score":""));
-      });
-      existingOnly.onchange=refresh;
+      function refresh(){
+        for(const r of rows){
+          const alreadyOnCourse=!!(r.m&&isStudentOnCourse(c,r.m.student.id));
+          const disabled=!r.hasScore||(existingOnly.checked&&!alreadyOnCourse);
+          r.cb.disabled=disabled;if(disabled)r.cb.checked=false;
+          r.tr.classList.toggle("aa-row-disabled",disabled);
+          r.status.textContent=r.base+(disabled&&existingOnly.checked&&!alreadyOnCourse?" · skipped by course-only filter":(!r.hasScore?" · no score":""));
+        }
+        count.textContent=rows.filter(r=>r.cb.checked&&!r.cb.disabled).length+" selected of "+rows.length;
+      }
+      existingOnly.onchange=refresh;refresh();
 
       table.appendChild(tbody);wrap.appendChild(table);body.appendChild(wrap);
       const foot=document.createElement("div");foot.className="aa-modal-foot";
       const close=v=>{overlay.remove();resolve(v)};
-      foot.append(btn("Cancel",()=>close(null)),btn("Import selected",()=>{
+      foot.append(btn("Cancel",()=>close(null)),btn("Add/import selected",()=>{
         const selected=rows.filter(r=>r.cb.checked&&!r.cb.disabled).map(r=>r.index);
         if(!selected.length)return alert("Select at least one student.");
         close({selected,existingOnly:existingOnly.checked});
       },"primary"));
-      modal.append(head,body,foot);overlay.appendChild(modal);document.body.appendChild(overlay);
-      overlay.onclick=ev=>{if(ev.target===overlay)close(null)};
+      modal.append(head,body,foot);overlay.appendChild(modal);document.body.appendChild(overlay);overlay.onclick=ev=>{if(ev.target===overlay)close(null)};
     });
   }
 
@@ -512,6 +523,9 @@
       if(!student){
         if(existingOnly){skippedNotOnCourse++;return}
         student=createStudent(c,incoming);created++;
+      }else if(!isStudentOnCourse(c,student.id)){
+        if(existingOnly){skippedNotOnCourse++;return}
+        activateStudent(c,student);
       }
       attachIdentity(student,incoming);
       results[student.id]={points:num(incoming.points),answerPaperId:incoming.answerPaperId||null,sourceName:incoming.name||"",sourceEmail:incoming.email||"",sourceAbittiUuid:incoming.uuid||"",importedAt:now()};
@@ -786,7 +800,7 @@
   .aa-score{cursor:pointer;text-decoration:underline dotted}.aa-card{border:1px solid #dde4e0;background:#fafcfb;border-radius:9px;padding:9px;margin-bottom:8px}.aa-card h3{margin:0 0 7px;font-size:14px}.aa-area{width:100%;min-height:170px;font-family:ui-monospace,Consolas,monospace}
   .aa-mini{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:6px;align-items:center;padding:6px 2px;border-bottom:1px solid #edf1ef}.aa-mini-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.aa-empty{text-align:center;color:#6a7871;padding:25px}\n  .aa-modal-overlay{position:fixed;inset:0;z-index:2147483647;background:#0007;display:flex;align-items:center;justify-content:center;padding:18px}\n  .aa-modal{width:min(920px,96vw);max-height:90vh;display:flex;flex-direction:column;background:#fff;color:#172026;border:1px solid #87958f;border-radius:10px;box-shadow:0 18px 60px #0006;overflow:hidden}\n  .aa-modal-head{padding:10px 12px;font-weight:800;border-bottom:1px solid #dde4e0;background:#f5f8f6}.aa-modal-body{padding:10px 12px;overflow:auto}.aa-modal-foot{padding:9px 12px;display:flex;justify-content:flex-end;gap:6px;border-top:1px solid #dde4e0;background:#fafcfb}\n  .aa-import-table td,.aa-import-table th{white-space:normal}.aa-row-disabled{opacity:.48}.aa-result-input{width:85px}
   .aa-destination-options{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px;margin-top:10px}.aa-destination-card{display:flex;flex-direction:column;gap:4px;text-align:left;border:1px solid #bbc8c2;border-radius:9px;background:#fff;color:#172026;padding:12px;cursor:pointer}.aa-destination-card:hover{background:#f5f8f6;border-color:#7f938a}.aa-destination-card strong{font-size:13px}.aa-destination-card span{font-size:11px;color:#6a7871}
-  #aa-grading-manager{margin:10px 0 14px;border:1px solid #aebbb5;border-radius:8px;background:#fff;color:#172026;font:12px system-ui,-apple-system,Segoe UI,sans-serif;overflow:hidden}.aa-manager-bar{display:flex;align-items:center;gap:7px;flex-wrap:wrap;padding:8px;background:#f5f8f6;border-bottom:1px solid #d7dfdb}.aa-manager-table{width:100%;border-collapse:collapse}.aa-manager-table th,.aa-manager-table td{padding:7px 8px;border-bottom:1px solid #e1e6e3;text-align:left;vertical-align:middle}.aa-manager-table th{background:#fafcfb}.aa-manager-exam{min-width:260px;font-weight:600}.aa-manager-select{min-width:185px}.aa-manager-select .aa-batch-check{margin-right:8px}.aa-add-group-select{min-width:145px}.aa-manager-select .aa-batch-check{margin-right:7px}.aa-manager-courses{min-width:280px}.aa-course-chip{display:inline-block;margin:2px 5px 2px 0;padding:4px 7px;border:1px solid #9dafaa;border-radius:999px;background:#f7faf8;color:#24362f;cursor:pointer;font-size:11px}.aa-course-chip:hover{background:#edf4f0}.aa-placement-table{margin-top:10px}.aa-placement-card{margin-top:10px}.aa-placement-title{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:8px}.aa-placement-title label{display:flex;align-items:center;gap:6px}.aa-sortable-head{cursor:pointer;user-select:none}.aa-sortable-head:hover{background:#eef4f1!important}.aa-sortable-head.active{font-weight:800}.aa-sort-arrow{font-size:10px;white-space:nowrap}.aa-gradebook-search{min-width:190px}.aa-exam-name-filter{min-width:180px}.aa-direct-suggestions{margin-top:10px;display:flex;flex-direction:column;gap:6px}.aa-direct-suggestion{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px;border:1px solid #dde4e0;border-radius:7px;background:#fafcfb}
+  #aa-grading-manager{margin:10px 0 14px;border:1px solid #aebbb5;border-radius:8px;background:#fff;color:#172026;font:12px system-ui,-apple-system,Segoe UI,sans-serif;overflow:hidden}.aa-manager-bar{display:flex;align-items:center;gap:7px;flex-wrap:wrap;padding:8px;background:#f5f8f6;border-bottom:1px solid #d7dfdb}.aa-manager-table{width:100%;border-collapse:collapse}.aa-manager-table th,.aa-manager-table td{padding:7px 8px;border-bottom:1px solid #e1e6e3;text-align:left;vertical-align:middle}.aa-manager-table th{background:#fafcfb}.aa-manager-exam{min-width:260px;font-weight:600}.aa-manager-select{min-width:185px}.aa-manager-select .aa-batch-check{margin-right:8px}.aa-add-group-select{min-width:145px}.aa-manager-select .aa-batch-check{margin-right:7px}.aa-manager-courses{min-width:280px}.aa-course-chip{display:inline-block;margin:2px 5px 2px 0;padding:4px 7px;border:1px solid #9dafaa;border-radius:999px;background:#f7faf8;color:#24362f;cursor:pointer;font-size:11px}.aa-course-chip:hover{background:#edf4f0}.aa-placement-table{margin-top:10px}.aa-placement-card{margin-top:10px}.aa-placement-title{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:8px}.aa-placement-title label{display:flex;align-items:center;gap:6px}.aa-sortable-head{cursor:pointer;user-select:none}.aa-sortable-head:hover{background:#eef4f1!important}.aa-sortable-head.active{font-weight:800}.aa-sort-arrow{font-size:10px;white-space:nowrap}.aa-gradebook-search{min-width:190px}.aa-exam-name-filter{min-width:180px}.aa-direct-suggestions{margin-top:10px;display:flex;flex-direction:column;gap:6px}.aa-direct-suggestion{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px;border:1px solid #dde4e0;border-radius:7px;background:#fafcfb}.aa-student-picker-scroll{max-height:55vh;overflow:auto}.aa-modal-wide{width:min(1100px,94vw)!important}.aa-assessment-chip{display:inline-flex;align-items:center;gap:4px;margin:2px 5px 2px 0;padding:3px 5px;border:1px solid #ccd7d2;border-radius:999px;background:#f7faf8}.aa-assessment-chip button{border:0;background:transparent;color:#a33;cursor:pointer;font-weight:700;padding:0 2px}.aa-removed-student{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #e5ebe8}.aa-removed-student>span{flex:1}
 
   #aa-grading-batchbar{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin:10px 0;padding:9px;border:1px solid #9eaaa4;border-radius:8px;background:#f5f8f6;color:#172026;font:12px system-ui,-apple-system,Segoe UI,sans-serif}#aa-grading-batchbar .aa-batch-hint{flex:1 1 320px;color:#53615a}.aa-batch-col{width:120px;min-width:120px;text-align:center!important}.aa-batch-cell{vertical-align:middle}.aa-batch-check{margin-right:6px}.aa-batch-group{width:48px;padding:3px 5px;border:1px solid #aebbb5;border-radius:5px;text-transform:uppercase}.aa-batch-head .aa-batch-sub{font-size:10px;font-weight:400;color:#66746d}\n  `);
 
@@ -949,11 +963,15 @@
       if(!(maxPoints>0))return alert("Invalid maximum points.");
     }
 
+    const selection=await chooseImportStudents(c,detected);
+    if(!selection)return;
+    const selectedIndexes=new Set(selection.selected);
+
     const existing=findReviewTarget(c,detected.reviewPath);
     if(existing){
       if(!confirm('"'+detected.name+'" is already in this course. Update its results?'))return;
       const targetResults=existing.part?existing.part.results:existing.assessment.results;
-      const stats=importSelectedIntoResults(c,targetResults,new Set(detected.students.map((_,i)=>i)),false,detected);
+      const stats=importSelectedIntoResults(c,targetResults,selectedIndexes,selection.existingOnly,detected);
       if(existing.part){existing.part.maxPoints=maxPoints;existing.part.updatedAt=now();syncCompositeMax(existing.assessment)}
       else{existing.assessment.maxPoints=maxPoints;existing.assessment.updatedAt=now()}
       c.updatedAt=now();save();render();
@@ -965,14 +983,14 @@
     if(destination.type==="existing"){
       const a=destination.assessment,parts=ensureParts(a);
       const part={id:uid("part"),name:detected.name,maxPoints,effect:1,source:{type:"omaabitti",reviewPath:detected.reviewPath},results:{},createdAt:now(),updatedAt:now()};
-      const stats=importSelectedIntoResults(c,part.results,new Set(detected.students.map((_,i)=>i)),false,detected);
+      const stats=importSelectedIntoResults(c,part.results,selectedIndexes,selection.existingOnly,detected);
       parts.push(part);syncCompositeMax(a);a.updatedAt=now();c.updatedAt=now();save();render();
       return alert("Added as a part of "+a.name+". Imported "+stats.imported+" results.");
     }
 
     const id=uid("assessment");
     const a=c.assessments[id]={id,name:detected.name,maxPoints,defaultWeight:0,type:"exam",source:{type:"omaabitti",reviewPath:detected.reviewPath},results:{},createdAt:now(),updatedAt:now()};
-    const stats=importSelectedIntoResults(c,a.results,new Set(detected.students.map((_,i)=>i)),false,detected);
+    const stats=importSelectedIntoResults(c,a.results,selectedIndexes,selection.existingOnly,detected);
     c.updatedAt=now();save();render();
     alert("Added "+detected.name+". Imported "+stats.imported+" results. Weight starts at 0%.");
   }
@@ -1128,35 +1146,27 @@
   }
 
   function manageCompositeStudents(c,a){
-    const parts=ensureParts(a);
-    const overlay=document.createElement("div");overlay.className="aa-modal-overlay";
-    const modal=document.createElement("div");modal.className="aa-modal";
-    const head=document.createElement("div");head.className="aa-modal-head";head.textContent="Edit students / part results · "+a.name;
+    ensureStudentPools(c);const parts=ensureParts(a),all=allKnownStudents(c);
+    const relevant=Object.values(all).filter(st=>isStudentOnCourse(c,st.id)||parts.some(p=>Object.prototype.hasOwnProperty.call(p.results||{},st.id)));
+    const overlay=document.createElement("div");overlay.className="aa-modal-overlay";const modal=document.createElement("div");modal.className="aa-modal aa-modal-wide";
+    const head=document.createElement("div");head.className="aa-modal-head";head.textContent="Students / results · "+a.name;
     const body=document.createElement("div");body.className="aa-modal-body";
-    const wrap=document.createElement("div");wrap.className="aa-table-wrap";
-    const table=document.createElement("table");table.className="aa-table";
-    const thead=document.createElement("thead"),hr=document.createElement("tr");hr.innerHTML="<th>Student</th>";
-    for(const p of parts){const th=document.createElement("th");th.textContent=p.name+" / "+p.maxPoints;hr.appendChild(th)}
-    thead.appendChild(hr);table.appendChild(thead);
+    const note=document.createElement("div");note.className="aa-muted aa-small";note.textContent=relevant.length+" known students. Use On course to add removed participants back to the course.";body.appendChild(note);
+    const wrap=document.createElement("div");wrap.className="aa-table-wrap aa-student-picker-scroll";const table=document.createElement("table");table.className="aa-table";
+    const thead=document.createElement("thead"),hr=document.createElement("tr");hr.innerHTML="<th>On course</th><th>Student</th>";for(const p of parts){const th=document.createElement("th");th.textContent=p.name+" / "+p.maxPoints;hr.appendChild(th)}thead.appendChild(hr);table.appendChild(thead);
     const tbody=document.createElement("tbody"),rows=[];
-    for(const st of Object.values(c.students).sort((x,y)=>x.canonicalName.localeCompare(y.canonicalName,"fi"))){
-      const tr=document.createElement("tr"),name=document.createElement("td");name.textContent=st.canonicalName;tr.appendChild(name);
-      const inputs=[];
-      for(const p of parts){
-        const td=document.createElement("td"),inp=document.createElement("input");inp.className="aa-input aa-result-input";inp.value=p.results?.[st.id]?.points??"";inp.placeholder="blank = no result";td.appendChild(inp);tr.appendChild(td);inputs.push({p,inp});
-      }
-      tbody.appendChild(tr);rows.push({st,inputs});
+    for(const st of relevant.sort((x,y)=>x.canonicalName.localeCompare(y.canonicalName,"fi"))){
+      const tr=document.createElement("tr"),onTd=document.createElement("td"),on=document.createElement("input");on.type="checkbox";on.checked=isStudentOnCourse(c,st.id);onTd.appendChild(on);
+      const name=document.createElement("td");name.textContent=st.canonicalName;tr.append(onTd,name);const inputs=[];
+      for(const p of parts){const td=document.createElement("td"),inp=document.createElement("input");inp.className="aa-input aa-result-input";inp.value=p.results?.[st.id]?.points??"";inp.placeholder="blank = no result";td.appendChild(inp);tr.appendChild(td);inputs.push({p,inp})}
+      tbody.appendChild(tr);rows.push({st,on,inputs});
     }
     table.appendChild(tbody);wrap.appendChild(table);body.appendChild(wrap);
     const foot=document.createElement("div");foot.className="aa-modal-foot";const close=()=>overlay.remove();
-    foot.append(btn("Cancel",close),btn("Save results",()=>{
+    foot.append(btn("Cancel",close),btn("Save",()=>{
       for(const row of rows){
-        for(const item of row.inputs){
-          const raw=item.inp.value.trim();item.p.results||={};
-          if(!raw){delete item.p.results[row.st.id];continue}
-          const points=num(raw);if(!Number.isFinite(points)){alert("Invalid points for "+row.st.canonicalName+" / "+item.p.name);item.inp.focus();return}
-          item.p.results[row.st.id]={...(item.p.results[row.st.id]||{}),points,editedAt:now()};
-        }
+        if(row.on.checked)activateStudent(c,row.st);else if(isStudentOnCourse(c,row.st.id))detachStudent(c,row.st.id);
+        for(const item of row.inputs){const raw=item.inp.value.trim();item.p.results||={};if(!raw){delete item.p.results[row.st.id];continue}const points=num(raw);if(!Number.isFinite(points))return alert("Invalid points for "+row.st.canonicalName+" / "+item.p.name);item.p.results[row.st.id]={...(item.p.results[row.st.id]||{}),points,editedAt:now()}}
       }
       for(const p of parts)p.updatedAt=now();a.updatedAt=now();c.updatedAt=now();save();close();render();
     },"primary"));
@@ -1192,45 +1202,53 @@
 
   function manageAssessmentStudents(c,a){
     if(hasParts(a))return manageCompositeStudents(c,a);
-    const overlay=document.createElement("div");overlay.className="aa-modal-overlay";
-    const modal=document.createElement("div");modal.className="aa-modal";
-    const head=document.createElement("div");head.className="aa-modal-head";head.textContent="Edit students / results · "+a.name;
-    const body=document.createElement("div");body.className="aa-modal-body";
-    const note=document.createElement("div");note.className="aa-muted aa-small";note.textContent="Unchecking a student removes only this exam result. The student remains on the course.";
-    body.appendChild(note);
-    const controls=document.createElement("div");controls.className="aa-toolbar";body.appendChild(controls);
-    const wrap=document.createElement("div");wrap.className="aa-table-wrap";
-    const table=document.createElement("table");table.className="aa-table";table.innerHTML="<thead><tr><th>In exam</th><th>Student</th><th>Email</th><th>Points</th></tr></thead>";
+    ensureStudentPools(c);const all=allKnownStudents(c);
+    const relevant=Object.values(all).filter(st=>isStudentOnCourse(c,st.id)||Object.prototype.hasOwnProperty.call(a.results||{},st.id));
+    const overlay=document.createElement("div");overlay.className="aa-modal-overlay";const modal=document.createElement("div");modal.className="aa-modal";
+    const head=document.createElement("div");head.className="aa-modal-head";head.textContent="Students / results · "+a.name;
+    const body=document.createElement("div");body.className="aa-modal-body";const note=document.createElement("div");note.className="aa-muted aa-small";note.textContent=relevant.length+" known students. On course restores removed students; In assessment controls this result.";body.appendChild(note);
+    const wrap=document.createElement("div");wrap.className="aa-table-wrap aa-student-picker-scroll";const table=document.createElement("table");table.className="aa-table";table.innerHTML="<thead><tr><th>On course</th><th>In assessment</th><th>Student</th><th>Email</th><th>Points</th></tr></thead>";
     const tbody=document.createElement("tbody"),rows=[];
-    for(const st of Object.values(c.students).sort((x,y)=>x.canonicalName.localeCompare(y.canonicalName,"fi"))){
-      const r=a.results?.[st.id],tr=document.createElement("tr");
-      const td0=document.createElement("td"),td1=document.createElement("td"),td2=document.createElement("td"),td3=document.createElement("td");
-      const cb=document.createElement("input");cb.type="checkbox";cb.checked=!!r;td0.appendChild(cb);
-      td1.textContent=st.canonicalName;td2.textContent=st.emails?.[0]||"";
-      const inp=document.createElement("input");inp.className="aa-input aa-result-input";inp.value=r?.points??"";inp.disabled=!cb.checked;inp.placeholder="0-"+a.maxPoints;td3.appendChild(inp);
-      cb.onchange=()=>{inp.disabled=!cb.checked;if(cb.checked&&!inp.value.trim())inp.focus()};
-      tr.append(td0,td1,td2,td3);tbody.appendChild(tr);rows.push({st,cb,inp});
+    for(const st of relevant.sort((x,y)=>x.canonicalName.localeCompare(y.canonicalName,"fi"))){
+      const r=a.results?.[st.id],tr=document.createElement("tr"),td0=document.createElement("td"),tdA=document.createElement("td"),td1=document.createElement("td"),td2=document.createElement("td"),td3=document.createElement("td");
+      const on=document.createElement("input");on.type="checkbox";on.checked=isStudentOnCourse(c,st.id);td0.appendChild(on);
+      const cb=document.createElement("input");cb.type="checkbox";cb.checked=!!r;tdA.appendChild(cb);td1.textContent=st.canonicalName;td2.textContent=st.emails?.[0]||"";
+      const inp=document.createElement("input");inp.className="aa-input aa-result-input";inp.value=r?.points??"";inp.disabled=!cb.checked;inp.placeholder="0-"+a.maxPoints;td3.appendChild(inp);cb.onchange=()=>{inp.disabled=!cb.checked};
+      tr.append(td0,tdA,td1,td2,td3);tbody.appendChild(tr);rows.push({st,on,cb,inp});
     }
-    controls.append(btn("Include all",()=>rows.forEach(r=>{r.cb.checked=true;r.inp.disabled=false})),btn("Remove all results",()=>rows.forEach(r=>{r.cb.checked=false;r.inp.disabled=true}),"danger"));
     table.appendChild(tbody);wrap.appendChild(table);body.appendChild(wrap);
     const foot=document.createElement("div");foot.className="aa-modal-foot";const close=()=>overlay.remove();
-    foot.append(btn("Cancel",close),btn("Save student list",()=>{
-      const changes=[];
-      for(const r of rows){
-        if(!r.cb.checked){changes.push({st:r.st,include:false});continue}
-        const points=num(r.inp.value);if(!Number.isFinite(points)){alert("Enter valid points for "+r.st.canonicalName+".");r.inp.focus();return}
-        changes.push({st:r.st,include:true,points});
-      }
+    foot.append(btn("Cancel",close),btn("Save",()=>{
       a.results||={};
-      for(const ch of changes){
-        if(!ch.include){delete a.results[ch.st.id];continue}
-        a.results[ch.st.id]={...(a.results[ch.st.id]||{}),points:ch.points,editedAt:now()};
-      }
+      for(const r of rows){if(r.on.checked)activateStudent(c,r.st);else if(isStudentOnCourse(c,r.st.id))detachStudent(c,r.st.id);if(!r.cb.checked){delete a.results[r.st.id];continue}const points=num(r.inp.value);if(!Number.isFinite(points))return alert("Enter valid points for "+r.st.canonicalName+".");a.results[r.st.id]={...(a.results[r.st.id]||{}),points,editedAt:now()}}
       a.updatedAt=now();c.updatedAt=now();save();close();render();
     },"primary"));
     modal.append(head,body,foot);overlay.appendChild(modal);document.body.appendChild(overlay);overlay.onclick=ev=>{if(ev.target===overlay)close()};
   }
 
+
+  function assessmentAsParts(a){
+    if(hasParts(a))return a.parts.map(p=>({...p,results:{...(p.results||{})}}));
+    return[{id:uid("part"),name:a.name,maxPoints:num(a.maxPoints)||0,effect:1,source:a.source?{...a.source}:{type:"manual"},results:{...(a.results||{})},createdAt:a.createdAt||now(),updatedAt:now()}];
+  }
+
+  function mergeAssessments(c,target,sources){
+    const parts=ensureParts(target);
+    for(const source of sources){
+      if(!source||source.id===target.id)continue;
+      for(const p of assessmentAsParts(source)){
+        if(p.source?.reviewPath&&parts.some(x=>x.source?.reviewPath===p.source.reviewPath))continue;
+        parts.push(p);
+      }
+      for(const st of Object.values(allKnownStudents(c))){
+        st.weightingOverrides||={};
+        if(Object.prototype.hasOwnProperty.call(st.weightingOverrides,source.id)&&!Object.prototype.hasOwnProperty.call(st.weightingOverrides,target.id))st.weightingOverrides[target.id]=st.weightingOverrides[source.id];
+        delete st.weightingOverrides[source.id];
+      }
+      delete c.assessments[source.id];
+    }
+    target.source={type:"composite"};target.results={};syncCompositeMax(target);target.updatedAt=now();c.updatedAt=now();save();
+  }
 
   function assessments(parent,c){
     const bar=document.createElement("div");bar.className="aa-toolbar";
@@ -1241,36 +1259,96 @@
       const id=uid("assessment");c.assessments[id]={id,name:n.trim(),maxPoints:m,defaultWeight:w,type:"manual",source:{type:"manual"},results:{},createdAt:now(),updatedAt:now()};save();render();
     }));
     if(IS_ABITTI)bar.appendChild(btn("Import current OmaAbitti exam",importDialog,"primary"));
+    const selected=new Set();
+    bar.appendChild(btn("Combine selected as multipart",()=>{
+      const list=[...selected].map(id=>c.assessments[id]).filter(Boolean);
+      if(list.length<2)return alert("Select at least two assessments.");
+      const target=list[0];
+      if(!confirm('Combine '+list.length+' assessments into "'+target.name+'"? The first selected assessment keeps its name and course weight.'))return;
+      mergeAssessments(c,target,list.slice(1));render();
+    }));
     parent.appendChild(bar);
 
-    const table=document.createElement("table");table.className="aa-table";table.innerHTML="<thead><tr><th>Assessment</th><th>Max</th><th>Weight %</th><th>Results</th><th></th></tr></thead>";
+    const table=document.createElement("table");table.className="aa-table";
+    table.innerHTML="<thead><tr><th></th><th>Assessment</th><th>Max</th><th>Weight %</th><th>Results</th><th></th></tr></thead>";
     const body=document.createElement("tbody");let total=0;
-
     for(const a of Object.values(c.assessments)){
       total+=num(a.defaultWeight)||0;
-      const tr=document.createElement("tr"),n=document.createElement("input"),m=document.createElement("input"),w=document.createElement("input");
-      n.className=m.className=w.className="aa-input";n.value=a.name;m.value=effectiveMax(a);w.value=a.defaultWeight;m.style.width=w.style.width="70px";if(hasParts(a)){m.readOnly=true;m.title="Combined maximum = sum of part maxima. Edit the parts instead."}
+      const tr=document.createElement("tr"),pickTd=document.createElement("td"),pick=document.createElement("input");pick.type="checkbox";pick.onchange=()=>pick.checked?selected.add(a.id):selected.delete(a.id);pickTd.appendChild(pick);
+      const n=document.createElement("input"),m=document.createElement("input"),w=document.createElement("input");
+      n.className=m.className=w.className="aa-input";n.value=a.name;m.value=effectiveMax(a);w.value=a.defaultWeight;m.style.width=w.style.width="70px";
+      if(hasParts(a)){m.readOnly=true;m.title="Combined maximum = sum of part maxima."}
       n.onchange=()=>{a.name=n.value.trim()||a.name;a.updatedAt=now();save();render()};
       m.onchange=()=>{if(hasParts(a))return render();const x=num(m.value);if(x>0){a.maxPoints=x;a.updatedAt=now();save()}render()};
       w.onchange=()=>{const x=num(w.value);if(x>=0){a.defaultWeight=x;a.updatedAt=now();save()}render()};
       const td1=document.createElement("td"),td2=document.createElement("td"),td3=document.createElement("td"),td4=document.createElement("td"),td5=document.createElement("td");
       td1.appendChild(n);td2.appendChild(m);td3.appendChild(w);td4.textContent=assessmentResultCount(a);
       if(hasParts(a))td5.appendChild(btn("Parts ("+a.parts.length+")",()=>manageAssessmentParts(c,a)));
-      td5.append(btn("Edit students",()=>manageAssessmentStudents(c,a)),btn("Delete exam",()=>{
+      td5.append(btn("Students",()=>manageAssessmentStudents(c,a)),btn("Delete",()=>{
         if(!confirm('Delete "'+a.name+'" and all its results?'))return;
-        delete c.assessments[a.id];for(const st of Object.values(c.students))delete st.weightingOverrides?.[a.id];c.updatedAt=now();save();render();
+        delete c.assessments[a.id];for(const st of Object.values(allKnownStudents(c)))delete st.weightingOverrides?.[a.id];c.updatedAt=now();save();render();
       },"danger"));
-      tr.append(td1,td2,td3,td4,td5);body.appendChild(tr);
+      tr.append(pickTd,td1,td2,td3,td4,td5);body.appendChild(tr);
     }
-
-    const tr=document.createElement("tr");tr.innerHTML="<td><strong>Total</strong></td><td></td><td><strong>"+fmt(total,1)+"%</strong></td><td colspan='2'>"+(Math.abs(total-100)<.001?"OK":"Weights are normalized when calculating.")+"</td>";
+    const tr=document.createElement("tr");tr.innerHTML="<td></td><td><strong>Total</strong></td><td></td><td><strong>"+fmt(total,1)+"%</strong></td><td colspan='2'>"+(Math.abs(total-100)<.001?"OK":"Weights are normalized when calculating.")+"</td>";
     body.appendChild(tr);table.appendChild(body);parent.appendChild(table);
   }
 
   function students(parent,c){
-    const bar=document.createElement("div");bar.className="aa-toolbar";bar.appendChild(btn("+ Student",()=>{const n=prompt("Student name:");if(n?.trim()){createStudent(c,{name:n,email:"",uuid:""});save();render()}}));parent.appendChild(bar);
-    const table=document.createElement("table");table.className="aa-table";table.innerHTML="<thead><tr><th>Student</th><th>Email</th><th>Aliases</th><th>Abitti IDs seen</th><th></th></tr></thead>";const body=document.createElement("tbody");
-    for(const s of Object.values(c.students).sort((a,b)=>a.canonicalName.localeCompare(b.canonicalName,"fi"))){const tr=document.createElement("tr");tr.innerHTML="<td>"+esc(s.canonicalName)+"</td><td>"+esc((s.emails||[]).join(", "))+"</td><td>"+esc((s.aliases||[]).join(", "))+"</td><td>"+(s.abittiUuids||[]).length+"</td>";const td=document.createElement("td");td.appendChild(btn("Edit",()=>{const n=prompt("Canonical student name:",s.canonicalName);if(n?.trim()){if(norm(n)!==norm(s.canonicalName)&&norm(s.canonicalName)!=="unnamed student"){s.aliases||=[];s.aliases.push(s.canonicalName)}s.canonicalName=n.trim()}const a=prompt("Aliases separated by |",(s.aliases||[]).join(" | "));if(a!==null)s.aliases=a.split("|").map(x=>x.trim()).filter(Boolean);save();render()}));td.appendChild(btn("Delete",()=>{if(confirm("Delete "+s.canonicalName+" and all their results?")){delete c.students[s.id];for(const a of Object.values(c.assessments)){delete a.results?.[s.id];for(const p of a.parts||[])delete p.results?.[s.id]}save();render()}},"danger"));tr.appendChild(td);body.appendChild(tr)}table.appendChild(body);parent.appendChild(table);
+    ensureStudentPools(c);
+    const bar=document.createElement("div");bar.className="aa-toolbar";
+    bar.appendChild(btn("+ Student",()=>{const n=prompt("Student name:");if(n?.trim()){createStudent(c,{name:n,email:"",uuid:""});save();render()}}));
+    const search=document.createElement("input");search.className="aa-input";search.placeholder="Filter students…";
+    const selected=new Set();
+    bar.append(search,btn("Remove selected from course",()=>{
+      if(!selected.size)return alert("Select students first.");
+      if(!confirm("Remove "+selected.size+" selected students from this course? Their assessment results will be kept so they can be restored."))return;
+      for(const id of selected)detachStudent(c,id);save();render();
+    },"danger"));parent.appendChild(bar);
+
+    const table=document.createElement("table");table.className="aa-table";
+    table.innerHTML="<thead><tr><th></th><th>Student</th><th>Email</th><th>Assessments</th><th>Assessment participation</th><th></th></tr></thead>";
+    const body=document.createElement("tbody");table.appendChild(body);parent.appendChild(table);
+
+    function draw(){
+      body.innerHTML="";selected.clear();const needle=norm(search.value);
+      const list=Object.values(c.students).filter(st=>!needle||names(st).some(n=>norm(n).includes(needle))||(st.emails||[]).some(e=>norm(e).includes(needle))).sort((a,b)=>a.canonicalName.localeCompare(b.canonicalName,"fi"));
+      for(const st of list){
+        const tr=document.createElement("tr"),pickTd=document.createElement("td"),pick=document.createElement("input");pick.type="checkbox";pick.onchange=()=>pick.checked?selected.add(st.id):selected.delete(st.id);pickTd.appendChild(pick);
+        const n=document.createElement("td");n.textContent=st.canonicalName;
+        const e=document.createElement("td");e.textContent=(st.emails||[]).join(", ");
+        const aas=Object.values(c.assessments).filter(a=>studentHasAssessmentResult(a,st.id));
+        const count=document.createElement("td");count.textContent=aas.length+" / "+Object.keys(c.assessments).length;
+        const chips=document.createElement("td");
+        for(const a of aas){
+          const chip=document.createElement("span");chip.className="aa-assessment-chip";
+          const label=document.createElement("span");label.textContent=a.name;
+          const remove=document.createElement("button");remove.type="button";remove.textContent="×";remove.title="Remove this assessment result";remove.onclick=()=>{if(confirm('Remove "'+a.name+'" from '+st.canonicalName+'?')){removeStudentFromAssessment(a,st.id);save();render()}};
+          chip.append(label,remove);chips.appendChild(chip);
+        }
+        if(!aas.length){const none=document.createElement("span");none.className="aa-muted";none.textContent="None";chips.appendChild(none)}
+        const actions=document.createElement("td");
+        actions.append(btn("Edit",()=>{
+          const nn=prompt("Canonical student name:",st.canonicalName);if(nn?.trim()){if(norm(nn)!==norm(st.canonicalName)&&norm(st.canonicalName)!=="unnamed student"){st.aliases||=[];st.aliases.push(st.canonicalName)}st.canonicalName=nn.trim()}
+          const aa=prompt("Aliases separated by |",(st.aliases||[]).join(" | "));if(aa!==null)st.aliases=aa.split("|").map(x=>x.trim()).filter(Boolean);save();render();
+        }),btn("Remove course",()=>{if(confirm("Remove "+st.canonicalName+" from this course? Results will be retained.")){detachStudent(c,st.id);save();render()}},"danger"));
+        tr.append(pickTd,n,e,count,chips,actions);body.appendChild(tr);
+      }
+    }
+    search.oninput=draw;draw();
+
+    const detached=Object.values(c.detachedStudents||{});
+    if(detached.length){
+      const card=document.createElement("div");card.className="aa-card";card.innerHTML="<h3>Removed from course ("+detached.length+")</h3><div class='aa-muted aa-small'>Stored assessment results are retained.</div>";
+      const list=document.createElement("div");list.className="aa-student-picker-scroll";
+      for(const st of detached.sort((a,b)=>a.canonicalName.localeCompare(b.canonicalName,"fi"))){
+        const row=document.createElement("div");row.className="aa-removed-student";
+        const aas=Object.values(c.assessments).filter(a=>studentHasAssessmentResult(a,st.id));
+        const info=document.createElement("span");info.textContent=st.canonicalName+" · "+aas.length+" assessment"+(aas.length===1?"":"s");
+        row.append(info,btn("Add back",()=>{activateStudent(c,st);save();render()},"primary"),btn("Delete permanently",()=>{if(confirm("Permanently delete "+st.canonicalName+" and all stored results?")){deleteStudentPermanently(c,st.id);save();render()}},"danger"));list.appendChild(row);
+      }
+      card.appendChild(list);parent.appendChild(card);
+    }
   }
 
   function data(parent,c){
@@ -1545,6 +1623,10 @@
         const detected=detectedExamFromReviewDocument(doc,item.reviewPath,item.title);
         if(!detected?.students.length){failed++;continue}
 
+        const studentSelection=await chooseImportStudents(c,detected);
+        if(!studentSelection){failed++;continue}
+        const selectedIndexes=new Set(studentSelection.selected);
+
         const maxInfo=await resolveDetectedMaxPoints(detected);
         let maxPoints=maxInfo?.value;
         if(!(maxPoints>0)){
@@ -1553,8 +1635,6 @@
           maxPoints=num(manual);
           if(!(maxPoints>0)){failed++;continue}
         }
-
-        const selectedIndexes=new Set(detected.students.map((_,i)=>i));
 
         if(isGroup){
           ensureParts(target);
@@ -1573,18 +1653,18 @@
             target.parts.push(part);
           }
           part.name=item.title;part.maxPoints=maxPoints;part.updatedAt=now();part.results||={};
-          const stats=importSelectedIntoResults(c,part.results,selectedIndexes,false,detected);
+          const stats=importSelectedIntoResults(c,part.results,selectedIndexes,studentSelection.existingOnly,detected);
           studentsImported+=stats.imported;syncCompositeMax(target);target.updatedAt=now();
         }else{
           existing=findReviewTarget(c,item.reviewPath);
           if(existing){
             if(existing.part){
               existing.part.name=item.title;existing.part.maxPoints=maxPoints;existing.part.updatedAt=now();
-              const stats=importSelectedIntoResults(c,existing.part.results,selectedIndexes,false,detected);
+              const stats=importSelectedIntoResults(c,existing.part.results,selectedIndexes,studentSelection.existingOnly,detected);
               studentsImported+=stats.imported;syncCompositeMax(existing.assessment);
             }else{
               existing.assessment.name=item.title;existing.assessment.maxPoints=maxPoints;existing.assessment.updatedAt=now();
-              const stats=importSelectedIntoResults(c,existing.assessment.results,selectedIndexes,false,detected);
+              const stats=importSelectedIntoResults(c,existing.assessment.results,selectedIndexes,studentSelection.existingOnly,detected);
               studentsImported+=stats.imported;
             }
           }else{
@@ -1593,7 +1673,7 @@
               id,name:item.title,maxPoints,defaultWeight:0,type:"exam",
               source:{type:"omaabitti",reviewPath:item.reviewPath},results:{},createdAt:now(),updatedAt:now()
             };
-            const stats=importSelectedIntoResults(c,a.results,selectedIndexes,false,detected);
+            const stats=importSelectedIntoResults(c,a.results,selectedIndexes,studentSelection.existingOnly,detected);
             studentsImported+=stats.imported;
           }
         }
