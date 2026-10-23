@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         ArviointiApina BETA 0.9.0-beta.1
+// @name         ArviointiApina BETA 0.9.0-beta.2
 // @namespace    https://github.com/ljrant/ArviointiApina
-// @version      0.9.0-beta.1
+// @version      0.9.0-beta.2
 // @description  BETA: OmaAbitti + Google Forms result collector and weighted course gradebook.
 // @match        *://*/*
 // @grant        GM_getValue
@@ -10,6 +10,7 @@
 // @grant        GM_addStyle
 // @grant        GM_registerMenuCommand
 // @grant        GM_xmlhttpRequest
+// @grant        GM_addValueChangeListener
 // @connect      oma.abitti.fi
 // @run-at       document-idle
 // @noframes
@@ -23,7 +24,7 @@
   "use strict";
 
   const KEY="arviointiapina_userscript_beta_v1";
-  const APP_VERSION="0.9.0-beta.1";
+  const APP_VERSION="0.9.0-beta.2";
   const APP_NAME="ArviointiApina BETA "+APP_VERSION;
   const FINNISH={"10":90,"9½":85,"9":80,"8½":75,"8":70,"7½":65,"7":60,"6½":55,"6":50,"5½":45,"5":40,"4½":30,"4":0};
   const IB={"7":85,"6":70,"5":55,"4":40,"3":25,"2":10,"1":0};
@@ -350,8 +351,25 @@
     return ids.size;
   }
 
+  function isPhantomCompositePart(a,p){
+    return !!p
+      && p.source?.type==="composite"
+      && (num(p.maxPoints)||0)===0
+      && Object.keys(p.results||{}).length===0
+      && (p.name===a.name+" — Part 1"||/\s—\sPart 1$/.test(String(p.name||"")));
+  }
+
   function ensureParts(a){
-    if(hasParts(a))return a.parts;
+    if(Array.isArray(a.parts)){
+      // Remove the placeholder created by older beta builds for an empty
+      // composite assessment. Real imported parts have their own OmaAbitti
+      // source and are preserved.
+      a.parts=a.parts.filter(p=>!isPhantomCompositePart(a,p));
+      return a.parts;
+    }
+
+    // Legacy single-exam assessment: migrate the real exam into Part 1 only
+    // when a multipart assessment is actually requested.
     const first={
       id:uid("part"),
       name:a.name+" — Part 1",
@@ -367,6 +385,22 @@
     a.source={type:"composite"};
     a.maxPoints=first.maxPoints;
     return a.parts;
+  }
+
+  function cleanupPhantomCompositeParts(){
+    let changed=false;
+    for(const c of Object.values(db.courses||{})){
+      for(const a of Object.values(c.assessments||{})){
+        if(!Array.isArray(a.parts))continue;
+        const before=a.parts.length;
+        a.parts=a.parts.filter(p=>!isPhantomCompositePart(a,p));
+        if(a.parts.length!==before){
+          syncCompositeMax(a);
+          a.updatedAt=now();c.updatedAt=now();changed=true;
+        }
+      }
+    }
+    if(changed)save();
   }
 
   function syncCompositeMax(a){
@@ -795,12 +829,20 @@
       launcher.setAttribute("aria-pressed",open?"true":"false");
       launcher.textContent=open?"Grades ✓":"Grades";
     }
-    root.querySelector("#aa-panel")?.remove();if(!open)return;
+    root.querySelector("#aa-panel")?.remove();
+    if(!open){
+      if(IS_GRADING_LIST)setTimeout(()=>setupGradingListPicker(true).catch(()=>{}),0);
+      return;
+    }
     const p=document.createElement("div");p.id="aa-panel";p.classList.toggle("compact",compact);root.appendChild(p);header(p);
     if(compact)return compactView(p);
     tabs(p);const content=document.createElement("div");content.className="aa-content";p.appendChild(content);const c=course();if(!c)return noCourse(content);
     const tab=db.settings.activeTab;
     if(tab==="assessments")assessments(content,c);else if(tab==="students")students(content,c);else if(tab==="data")data(content,c);else if(tab==="settings")settings(content,c);else gradebook(content,c);
+
+    if(IS_GRADING_LIST){
+      setTimeout(()=>setupGradingListPicker(true).catch(error=>console.error("ArviointiApina grading-list refresh failed",error)),0);
+    }
   }
 
   function header(p){
@@ -1645,7 +1687,15 @@
     for(const crs of Object.values(db.courses).sort((a,b)=>a.name.localeCompare(b.name,"fi"))){
       const o=document.createElement("option");o.value=crs.id;o.textContent=crs.name;o.selected=crs.id===db.settings.activeCourseId;courseSelect.appendChild(o);
     }
-    courseSelect.onchange=()=>{db.settings.activeCourseId=courseSelect.value;save();setupGradingListPicker(true)};
+    courseSelect.onchange=()=>{db.settings.activeCourseId=courseSelect.value;save();render();setupGradingListPicker(true)};
+
+    const addCourseBtn=btn("+ Course",()=>{
+      const n=prompt("Course/class name:");
+      if(!n?.trim())return;
+      createCourse(n.trim());
+      render();
+      setupGradingListPicker(true);
+    });
 
     const schoolYearSelect=document.createElement("select");schoolYearSelect.className="aa-select";
     const allYears=document.createElement("option");allYears.value="__all__";allYears.textContent="All school years";schoolYearSelect.appendChild(allYears);
@@ -1677,7 +1727,7 @@
       finally{importBtn.disabled=false;importBtn.textContent="Add selected to gradebook"}
     },"primary");
 
-    bar.append(brand,document.createTextNode("Course:"),courseSelect,document.createTextNode("School year:"),schoolYearSelect,importBtn);
+    bar.append(brand,document.createTextNode("Course:"),courseSelect,addCourseBtn,document.createTextNode("School year:"),schoolYearSelect,importBtn);
     manager.appendChild(bar);
 
     const table=document.createElement("table");table.className="aa-manager-table";
@@ -1885,6 +1935,25 @@
   GM_registerMenuCommand("Open compact grade panel",()=>{setPanelState(true,true);render()});
   GM_registerMenuCommand("Import Google Forms quiz CSV (BETA)",chooseGoogleFormsCSV);
   GM_registerMenuCommand("Export ArviointiApina backup",backup);
+
+  cleanupPhantomCompositeParts();
+
+  if(typeof GM_addValueChangeListener==="function"){
+    GM_addValueChangeListener(KEY,(_name,_oldValue,newValue,remote)=>{
+      if(!remote)return;
+      try{
+        const parsed=typeof newValue==="string"?JSON.parse(newValue):newValue;
+        if(parsed&&typeof parsed==="object"){
+          db={...fresh(),...parsed,settings:{...fresh().settings,...(parsed.settings||{})},courses:parsed.courses||{}};
+          cleanupPhantomCompositeParts();
+          render();
+          if(IS_GRADING_LIST)setTimeout(()=>setupGradingListPicker(true).catch(()=>{}),0);
+        }
+      }catch(error){
+        console.warn("ArviointiApina: could not sync remote gradebook changes",error);
+      }
+    });
+  }
 
   ensureRoot();render();
 
